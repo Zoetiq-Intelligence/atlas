@@ -1,0 +1,141 @@
+// device.test.mjs — the cases that otherwise ONLY reproduce on hardware.
+//
+// This test exists because of GUIDE §3.1: env() is a read-only UA value with no
+// setter, so a rule that reads it directly can never be exercised off-device — and
+// the installed-with-insets configuration is precisely the one that overflows. Routing
+// every inset through a custom property converts an unwritable UA input into an
+// ordinary style input, which is what makes THIS FILE possible.
+//
+// Honest limits (GUIDE §0.1): this is Chromium. It proves the CSS responds correctly
+// to the inset and keyboard values. It does NOT prove iOS produces those values, and
+// it cannot settle any standalone-container question. Only the device truth kit can.
+const pwPath = process.env.PW || 'playwright';
+const pw = (await import(pwPath)).default ?? (await import(pwPath));
+const { chromium } = pw;
+const CHROME = process.env.CHROME || undefined;
+const base = process.argv[2];
+
+let pass = 0, fail = 0;
+const ck = (c, m) => { c ? pass++ : (fail++, console.log('  FAIL:', m)); };
+
+const b64u = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+const JWT = 'h.' + b64u({ sub: '11111111-2222-3333-4444-555555555555', exp: 9e9 }) + '.s';
+
+const browser = await chromium.launch({ executablePath: CHROME });
+const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 3 });
+const p = await ctx.newPage();
+const errs = [];
+p.on('pageerror', e => errs.push('pageerror: ' + e));
+p.on('console', m => { if (m.type() === 'error' && !/favicon|status of 40/.test(m.text())) errs.push(m.text()); });
+
+await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', r => {
+  const u = new URL(r.request().url());
+  if (u.pathname.startsWith('/auth/')) {
+    return r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ access_token: JWT, refresh_token: 'r', expires_in: 3600 }) });
+  }
+  return r.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+});
+
+await p.goto(base + `/index.html?r=1#access_token=${JWT}&refresh_token=r&expires_in=3600`);
+await p.waitForSelector('#app:not([hidden])', { timeout: 8000 });
+
+const cssVar = n => p.evaluate(v => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v)) || 0, n);
+const box = sel => p.locator(sel).first().boundingBox();
+
+// ---- baseline: no insets, no keyboard -------------------------------------
+ck(await cssVar('--sa-bottom') === 0, 'baseline bottom inset is 0');
+// --bar-h is a calc(); getPropertyValue returns the unresolved token stream, so it
+// must be MEASURED, never parsed. This assertion is what found that bug in the app.
+const barBase = (await box('#footer')).height;
+ck(barBase > 60 && barBase < 110, `bar height sane at baseline: ${barBase}`);
+
+// ---- GUIDE §3.1 — drive the INSTALLED configuration off-device -------------
+// 59pt top / 34pt bottom is the measured notched-phone standalone case.
+await p.addStyleTag({ content: ':root{--sa-top:59px;--sa-bottom:34px;--sa-left:0px;--sa-right:0px}' });
+await p.waitForTimeout(120);
+
+ck(await cssVar('--sa-bottom') === 34, 'inset override took effect — env() is not read directly anywhere');
+const barInset = (await box('#footer')).height;
+// GUIDE §3.4 — the inset is ADDED to the bar, never padded out of a fixed height.
+ck(Math.abs((barInset - barBase) - 34) < 1.5,
+   `bar grew by exactly the inset: ${barBase} -> ${barInset} (expected +34)`);
+
+const footer = await box('#footer');
+const rows = await p.locator('#footer .frow').all();
+const lastRow = await rows[rows.length - 1].boundingBox();
+// The control row must stay ABOVE the reserved band, not be squashed by it.
+ck(lastRow.y + lastRow.height <= footer.y + footer.height - 34 + 1.5,
+   'footer controls sit above the home-indicator reserve, not inside it');
+
+const paneHd = await box('.pane-hd');
+ck(paneHd.height >= 59, `pane header absorbs the top inset: ${paneHd.height}`);
+
+// GUIDE §2.3 — nothing may be laid out below the layout viewport.
+const overflow = await p.evaluate(() =>
+  document.documentElement.scrollHeight - document.documentElement.clientHeight);
+ck(overflow <= 0, `no vertical overflow of the layout viewport (${overflow})`);
+const hScroll = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+ck(hScroll <= 0, `no horizontal body scroll (${hScroll})`);
+
+// ---- GUIDE §3.5 — drive the KEYBOARD case ----------------------------------
+const footerBefore = await box('#footer');
+await p.evaluate(() => document.documentElement.style.setProperty('--kb', '336px'));
+await p.waitForTimeout(200);
+const footerUp = await box('#footer');
+ck(Math.abs((footerBefore.y - footerUp.y) - 336) < 2,
+   `footer lifts by exactly the keyboard inset: moved ${(footerBefore.y - footerUp.y).toFixed(0)}px`);
+ck(footerUp.y + footerUp.height <= 852 - 336 + 2,
+   'footer is fully above where the keyboard would be');
+
+const panes = await box('#panes');
+ck(panes.y + panes.height <= footerUp.y + 2, 'editor area shrinks to stay above the lifted footer');
+
+await p.evaluate(() => document.documentElement.style.setProperty('--kb', '0px'));
+await p.waitForTimeout(150);
+
+// ---- GUIDE §4.1 — focus-zoom prevention ------------------------------------
+const small = await p.evaluate(() =>
+  [...document.querySelectorAll('input,textarea,select')]
+    .map(el => ({ id: el.id, fs: parseFloat(getComputedStyle(el).fontSize) }))
+    .filter(x => x.fs < 16));
+ck(small.length === 0, 'every input computes to >= 16px: ' + JSON.stringify(small));
+
+// ---- GUIDE §4.2 — the swipe/selection split is done in touch-action --------
+const ta = await p.evaluate(() => ({
+  editor: getComputedStyle(document.querySelector('.editor')).touchAction,
+  edge:   getComputedStyle(document.querySelector('.edge')).touchAction,
+}));
+ck(ta.editor === 'pan-y', `editor is pan-y so horizontal drag belongs to selection (got ${ta.editor})`);
+ck(ta.edge === 'pan-x', `edge strips are pan-x so they can pan the snap container (got ${ta.edge})`);
+
+// ---- GUIDE §9 — the device truth kit is reachable and honest ---------------
+// The build id lives in the slide-over, so it can never be tapped by accident.
+await p.locator('.pane-hd [data-act="list"]').first().click();
+await p.waitForSelector('#sidebar.open', { timeout: 4000 });
+await p.waitForTimeout(260);
+for (let i = 0; i < 5; i++) await p.click('#build');
+await p.waitForSelector('#diag:not([hidden])', { timeout: 4000 });
+// The report is assembled asynchronously (caches, storage.estimate, an IndexedDB
+// open); wait for the payload rather than racing it.
+await p.waitForFunction(() => {
+  const el = document.querySelector('#dg-dump');
+  return el && el.textContent.length > 200;
+}, null, { timeout: 8000 });
+const dump = await p.locator('#dg-dump').textContent();
+const rep = JSON.parse(dump);
+ck(rep.geometry.statusBarStyle === 'black', 'report echoes its own status-bar config');
+ck(rep.geometry.viewportMeta.includes('viewport-fit=cover'), 'report echoes its own viewport meta');
+ck('bottomBand' in rep.geometry && 'shortfall' in rep.geometry, 'report carries the derived band facts');
+ck(rep.geometry.saBottom === 34, 'report reads the driven inset, not env() directly');
+ck(typeof rep.build.running === 'string', 'report carries a build id from the live cache');
+ck(rep.storage.idb && rep.storage.idb.stores, 'report read IndexedDB without upgrading it');
+
+// The kit must not have written anything.
+const wrote = await p.evaluate(() => !!localStorage.getItem('diag') );
+ck(!wrote, 'the diagnostic wrote nothing');
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (errs.length) { console.log('\nPAGE ERRORS:'); [...new Set(errs)].slice(0, 8).forEach(e => console.log(' ', e)); }
+await browser.close();
+process.exit(fail || errs.length ? 1 : 0);

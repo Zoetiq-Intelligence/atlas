@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>atlas</title>
+<!-- GUIDE §2.7 — installability is a property of the PAGE, not the site. iOS installs
+     whatever page is open, using that page's own metadata. This hub deliberately
+     carries NO manifest link and NO capable meta, so Add to Home Screen from here
+     cannot install a chromeless link directory with no way out. Asserted in tests,
+     with comments stripped first so this very comment does not trip the check. -->
+<style>
+  body{margin:0;padding:48px 20px;max-width:34em;margin-inline:auto;background:#fffdf7;color:#1c1c1e;
+       font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+  @media (prefers-color-scheme:dark){body{background:#1c1c1e;color:#f2f2f7}}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+  p{color:#6b6b70}
+  a.app{display:block;padding:16px 18px;margin:10px 0;border-radius:12px;
+        border:1px solid rgba(128,128,128,.28);text-decoration:none;color:inherit}
+  a.app b{display:block;font-size:17px}
+  a.app span{color:#6b6b70;font-size:14px}
+</style>
+</head>
+<body>
+<h1>atlas</h1>
+<p>One-shots and workflow systems.</p>
+<a class="app" href="./notes/"><b>Notes</b><span>iOS Notes replacement — install this one to the home screen</span></a>
+<a class="app" href="./reset/"><b>Reset</b><span>Clear a stuck app's cached program files</span></a>
+</body>
+</html>

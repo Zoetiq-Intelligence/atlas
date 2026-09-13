@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+
+<!-- GUIDE §2.4 — `cover` is the opt-in that makes env() non-zero at all. Without it
+     every inset silently computes to 0 and all the inset handling is dead code.
+     NO height=device-height: measured on device, it does not move innerHeight, and
+     it asks for a layout viewport taller than the frame, which IS the mismatch.
+     NO maximum-scale / user-scalable (§2.5): Safari has ignored them since iOS 10,
+     they do not stop focus-zoom (only §4.1 does), and they cost a type floor. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<!-- GUIDE §2.1 — `black`, NEVER `black-translucent`. Translucent enlarges the native
+     frame but not the layout viewport, which stays at (screen - status bar) pinned to
+     the TOP. The whole difference lands as a dead band at the BOTTOM that is painted
+     by the root background propagated to the canvas, so no restyling can remove it,
+     and any fixed box positioned into it is laid out below the clip and never
+     composited - it vanishes. Measured: 852 frame, 793 viewport, 59 top inset. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+<!-- GUIDE §2.2 — both spellings; the apple- prefix is deprecated and warns. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Notes">
+
+<!-- GUIDE §2.6 — iOS rewrites number-like runs as tel: links: wrong colour, and a
+     tap offers to place a call. A notes app is full of bare numbers. -->
+<meta name="format-detection" content="telephone=no">
+
+<title>Notes</title>
+<meta name="theme-color" content="#fffdf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
+
+<!-- GUIDE §7.8 — hadController MUST be captured synchronously, before any async work.
+     In a deferred module a clients.claim() can land first and make this read true on a
+     first install, reintroducing the first-launch flash it exists to prevent. -->
+<script>window.__HAD_CONTROLLER__ = !!(navigator.serviceWorker && navigator.serviceWorker.controller);</script>
+
+<!-- GUIDE §8.2 — every path relative. Pages serves this at /atlas/notes/, not the
+     root; one absolute path 404s ONLY in production. -->
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./css/base.css">
+<link rel="stylesheet" href="./css/layout.css">
+<link rel="stylesheet" href="./css/editor.css">
+</head>
+<body>
+
+<div id="gate" hidden>
+  <div class="card">
+    <h1>Notes</h1>
+    <!-- GUIDE §6.2 — the code is the only sign-in that works in the installed app.
+         A magic link always opens in Safari, and iOS gives a home-screen app a
+         separate storage container, so the link signs in the browser and leaves this
+         app logged out forever. -->
+    <p>We&rsquo;ll email you a code. On a phone, type the code &mdash; the link only signs in Safari.</p>
+    <form id="f-email">
+      <input id="email" type="email" inputmode="email" autocomplete="email"
+             placeholder="you@example.com" required>
+      <button class="go" type="submit">Send code</button>
+    </form>
+    <form id="f-code" hidden>
+      <input id="code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="8"
+             placeholder="6-digit code" required class="code-in">
+      <button class="go" type="submit">Sign in</button>
+      <button id="back" type="button" class="quiet">Use a different email</button>
+    </form>
+    <div class="msg" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <div id="scrim" hidden></div>
+
+  <aside id="sidebar" hidden>
+    <div class="sb-hd">
+      <div class="row1">
+        <h1>Notes</h1>
+        <span id="pip" title="Sync"></span>
+        <button id="new" class="icon" type="button" aria-label="New note"></button>
+      </div>
+      <input id="search" type="search" placeholder="Search" autocomplete="off">
+      <div id="folders"></div>
+    </div>
+    <div id="list"></div>
+    <div class="sb-ft">
+      <!-- GUIDE §7.13 — the build id is read from the LIVE cache name, so it reports
+           what is RUNNING, not what was deployed. Those two disagreeing is exactly the
+           condition being diagnosed, so a constant lies in the only case that matters.
+           Five taps opens the device truth kit (§9). -->
+      <button id="build" type="button" class="quiet" title="Tap 5 times for diagnostics">build …</button>
+      <button id="signout" type="button" class="quiet">Sign out</button>
+    </div>
+  </aside>
+
+  <main id="panes">
+    <section class="pane">
+      <header class="pane-hd">
+        <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
+        <span class="ttl">&nbsp;</span>
+        <button type="button" data-act="new" aria-label="New note">&#43;</button>
+      </header>
+      <div class="editor"></div>
+      <div class="edge edge-l"></div>
+      <div class="edge edge-r"></div>
+    </section>
+
+    <div id="gutter" role="separator" aria-label="Switch pane"><span class="grip"></span></div>
+
+    <section class="pane">
+      <header class="pane-hd">
+        <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
+        <span class="ttl">&nbsp;</span>
+        <button type="button" data-act="new" aria-label="New note">&#43;</button>
+      </header>
+      <div class="editor"></div>
+      <div class="edge edge-l"></div>
+      <div class="edge edge-r"></div>
+    </section>
+  </main>
+
+  <footer id="footer"></footer>
+
+  <!-- GUIDE §7.7 — a passive, non-modal badge, allowed to appear even while busy, so
+       an update is never invisible to someone who lives on the work surface. The
+       interrupting toast is what gets suppressed, not the information. -->
+  <button id="updbadge" type="button" hidden>Update ready</button>
+</div>
+
+<div id="diag" hidden></div>
+
+<script type="module" src="./js/main.js"></script>
+<script src="./update.js" defer></script>
+</body>
+</html>

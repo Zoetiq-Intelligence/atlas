@@ -1,0 +1,98 @@
+/* editor.css — block rows. Each .txt is its own contenteditable (DESIGN.md §4). */
+
+.doc { max-width: 42em; margin: 0 auto; counter-reset: ol0 ol1 ol2; }
+
+.row { position: relative; display: flex; align-items: flex-start; gap: 7px; }
+.row .txt {
+  flex: 1;
+  min-width: 0;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding: 1px 0;
+  caret-color: var(--accent-ink);
+}
+.row .txt:empty::before {
+  content: attr(data-ph);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/* indent */
+.row[data-depth="1"] { padding-left: 22px; }
+.row[data-depth="2"] { padding-left: 44px; }
+.row[data-depth="3"] { padding-left: 66px; }
+
+/* block types */
+.row[data-t="h1"] .txt { font-size: 1.6em; font-weight: 700; letter-spacing: -.02em; margin: .5em 0 .1em; }
+.row[data-t="h2"] .txt { font-size: 1.27em; font-weight: 700; letter-spacing: -.01em; margin: .45em 0 .1em; }
+.row[data-t="h3"] .txt { font-size: 1.08em; font-weight: 600; margin: .4em 0 .1em; }
+.row[data-t="p"]  .txt { margin: .12em 0; }
+
+.row[data-t="quote"] { border-left: 3px solid var(--accent); padding-left: 11px; margin: .3em 0; }
+.row[data-t="quote"] .txt { color: var(--ink-2); font-style: italic; }
+
+.row[data-t="code"] { background: var(--paper-2); border-radius: 7px; margin: .35em 0; }
+.row[data-t="code"] .txt { font: .88em/1.5 var(--mono); padding: 8px 11px; white-space: pre-wrap; }
+
+/* markers */
+.row[data-t="li"]::before {
+  content: "•";
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  color: var(--accent-ink);
+  line-height: var(--lh);
+}
+.row[data-t="ol"] { counter-increment: ol0; }
+.row[data-t="ol"]::before {
+  content: counter(ol0) ".";
+  flex: 0 0 auto;
+  min-width: 17px;
+  text-align: right;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh);
+}
+.row:not([data-t="ol"]) { counter-reset: ol0; }
+
+.row[data-t="check"] > .chk {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  margin-top: calc((1em * var(--lh) - 18px) / 2);
+  border: 1.7px solid var(--ink-3);
+  border-radius: 50%;
+  display: grid; place-items: center;
+}
+.row[data-t="check"] > .chk[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.row[data-t="check"] > .chk svg { width: 11px; height: 11px; stroke: #fff; stroke-width: 2.6; fill: none; opacity: 0; }
+.row[data-t="check"] > .chk[aria-pressed="true"] svg { opacity: 1; }
+.row[data-t="check"][data-done="1"] .txt { color: var(--ink-3); text-decoration: line-through; }
+
+/* inline marks */
+.m-b { font-weight: 700; }
+.m-i { font-style: italic; }
+.m-u { text-decoration: underline; }
+.m-s { text-decoration: line-through; }
+.m-u.m-s { text-decoration: underline line-through; }
+.m-code {
+  font: .89em var(--mono);
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* The first block of a note reads as its title, the way iOS Notes does it —
+   without being a distinct block type, so the model stays uniform and the
+   denormalised `title` column is just "first non-empty line". An explicit
+   type on the first block still wins. */
+.doc > .row:first-child[data-t="p"] .txt {
+  font-size: 1.45em;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin: 0 0 .15em;
+}
