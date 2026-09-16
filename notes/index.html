@@ -55,16 +55,21 @@
          A magic link always opens in Safari, and iOS gives a home-screen app a
          separate storage container, so the link signs in the browser and leaves this
          app logged out forever. -->
-    <p>We&rsquo;ll email you a code. On a phone, type the code &mdash; the link only signs in Safari.</p>
+    <p>We&rsquo;ll email you a sign-in code. On a phone, type the code &mdash; the link only signs in Safari.</p>
     <form id="f-email">
       <input id="email" type="email" inputmode="email" autocomplete="email"
              placeholder="you@example.com" required>
       <button class="go" type="submit">Send code</button>
     </form>
     <form id="f-code" hidden>
+      <!-- Supabase's OTP length is a project setting (6-10 digits), not a constant,
+           so the field must not assert a length it cannot know. maxlength is set
+           above the maximum rather than at the expected value: a field that silently
+           truncates a correct code produces an "invalid code" error with no cause
+           the user can see. -->
       <input id="code" type="text" inputmode="numeric" pattern="[0-9]*"
-             autocomplete="one-time-code" maxlength="8"
-             placeholder="6-digit code" required class="code-in">
+             autocomplete="one-time-code" maxlength="10"
+             placeholder="Sign-in code" required class="code-in">
       <button class="go" type="submit">Sign in</button>
       <button id="back" type="button" class="quiet">Use a different email</button>
     </form>
