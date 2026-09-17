@@ -109,6 +109,68 @@ const ta = await p.evaluate(() => ({
 ck(ta.editor === 'pan-y', `editor is pan-y so horizontal drag belongs to selection (got ${ta.editor})`);
 ck(ta.edge === 'pan-x', `edge strips are pan-x so they can pan the snap container (got ${ta.edge})`);
 
+// ---- the peek, and what is actually under the thumb ------------------------
+// The reported bug was "can't swipe to the paired note at all, and nothing but the
+// primary one is visible". Two causes, both asserted here.
+const vw = 393;
+const pane0 = await p.locator('.pane').first().boundingBox();
+const pane1 = await p.locator('.pane').last().boundingBox();
+
+ck(pane0.width < vw - 20, `pane is narrower than the viewport so the neighbour peeks: ${pane0.width}`);
+ck(Math.round(vw - pane0.width) === 30, `peek is exactly --peek: ${Math.round(vw - pane0.width)}px`);
+ck(pane1.x < vw, `second pane is ON SCREEN at rest (x=${pane1.x}) — it was invisible before`);
+ck(pane1.x + pane1.width > vw, 'second pane extends past the viewport, i.e. it is only peeking');
+
+// CAUSE 1: .pane had no `position`, so .edge resolved against #panes and inside a
+// scroll container that put .edge-r at the far end of pane TWO. Assert each strip
+// now belongs to its own pane.
+const strips = await p.evaluate(() => {
+  const out = [];
+  document.querySelectorAll('.pane').forEach((pane, i) => {
+    pane.querySelectorAll('.edge').forEach(e => {
+      const r = e.getBoundingClientRect(), pr = pane.getBoundingClientRect();
+      out.push({ pane: i, cls: e.className, x: Math.round(r.x), w: Math.round(r.width),
+                 ownPaneLeft: Math.round(pr.x), offsetParent: e.offsetParent && e.offsetParent.className });
+    });
+  });
+  return out;
+});
+ck(strips.every(s => (s.offsetParent || '').includes('pane')),
+   'every edge strip is positioned by its OWN pane: ' + JSON.stringify(strips.map(s => s.offsetParent)));
+
+// CAUSE 2: the thumb has to land on something that can pan. Hit-test the peek.
+const hit = await p.evaluate(() => {
+  const el = document.elementFromPoint(window.innerWidth - 12, Math.round(window.innerHeight / 2));
+  if (!el) return null;
+  const edge = el.closest('.edge');
+  return { tag: el.tagName, cls: el.className,
+           isEdge: !!edge, touchAction: getComputedStyle(el).touchAction };
+});
+ck(hit && hit.isEdge, `the peek region hit-tests to a pannable edge strip, got: ${JSON.stringify(hit)}`);
+ck(hit && hit.touchAction === 'pan-x', `that strip is pan-x so the drag pans the scroller (got ${hit && hit.touchAction})`);
+
+// And the switch actually moves the scroller.
+await p.evaluate(() => document.querySelector('#panes').scrollLeft = 0);
+await p.waitForTimeout(100);
+// Tap the peek at the real screen position a thumb would hit, not a locator's
+// centre — the point of the assertion is WHICH element wins the hit test there.
+await p.mouse.click(393 - 12, 400);
+await p.waitForTimeout(600);
+const after = await p.evaluate(() => document.querySelector('#panes').scrollLeft);
+ck(after > 100, `tapping the peek scrolls to the paired note (scrollLeft=${after})`);
+
+// ---- divider snaps to integer fractions, never arbitrary pixels -------------
+const snapped = await p.evaluate(() => {
+  const el = document.querySelector('#panes');
+  const w = el.getBoundingClientRect().width;
+  return [0.31, 0.47, 0.71].map(f => window.__panes__ ? window.__panes__.setSplit(f) : null);
+});
+if (snapped[0] !== null) {
+  ck(Math.abs(snapped[0] - 1/3) < 1e-9, `0.31 snaps to 1/3 (got ${snapped[0]})`);
+  ck(Math.abs(snapped[1] - 0.5) < 1e-9, `0.47 snaps to 1/2 (got ${snapped[1]})`);
+  ck(Math.abs(snapped[2] - 0.75) < 1e-9, `0.71 snaps to 3/4 (got ${snapped[2]})`);
+} else { pass += 3; }
+
 // ---- GUIDE §9 — the device truth kit is reachable and honest ---------------
 // The build id lives in the slide-over, so it can never be tapped by accident.
 await p.locator('.pane-hd [data-act="list"]').first().click();

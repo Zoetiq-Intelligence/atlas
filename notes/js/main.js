@@ -110,6 +110,7 @@ async function startApp() {
   $('#app').hidden = false;
 
   panes = createPanes($('#panes'), $('#gutter'), { onActive: i => { focused = i; footer.sync(); } });
+  window.__panes__ = panes;   // test surface: assert the divider's snap stops
 
   editors = [0, 1].map(i => createEditor(panes.editor(i), {
     onChange: (doc, title) => persist(i, doc, title),

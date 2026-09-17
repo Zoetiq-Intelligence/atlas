@@ -7,6 +7,30 @@
 
 const DESKTOP = '(min-width: 820px)';
 
+/**
+ * Divider stops: every k/n for n in 2..5, deduped and sorted. Snapping to these
+ * rather than to arbitrary pixels means the split is always a describable ratio —
+ * a half, a third, two fifths — which is both easier to re-hit and easier to reason
+ * about than "roughly 47%". The divider snaps DURING the drag, not on release, so
+ * it feels magnetic rather than corrective.
+ */
+const STOPS = [...new Set(
+  [2, 3, 4, 5].flatMap(n => Array.from({ length: n - 1 }, (_, i) => (i + 1) / n))
+)].sort((a, b) => a - b);
+
+function nearestStop(fraction) {
+  return STOPS.reduce((best, s) =>
+    Math.abs(s - fraction) < Math.abs(best - fraction) ? s : best, STOPS[0]);
+}
+
+/** Readable label for the stop, so the drag can say what it snapped to. */
+function stopLabel(f) {
+  for (const n of [2, 3, 4, 5]) {
+    for (let k = 1; k < n; k++) if (Math.abs(k / n - f) < 1e-9) return `${k}/${n}`;
+  }
+  return Math.round(f * 100) + '%';
+}
+
 export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
   const panes = [...scroller.querySelectorAll('.pane')];
   let active = 0;
@@ -41,17 +65,22 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
     // GUIDE §7.4 — a drag exists only as a pointer capture and closure variables, so
     // a store-only busy check sees nothing and reloads mid-gesture.
     if (window.UPDATE) window.UPDATE.__dragging = true;
-    drag = { x: e.clientX, w: panes[0].getBoundingClientRect().width };
+    drag = { x: e.clientX, w: panes[0].getBoundingClientRect().width, last: null };
     gutter.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
   gutter.addEventListener('pointermove', e => {
     if (!drag) return;
     const total = scroller.getBoundingClientRect().width;
-    const next = Math.max(220, Math.min(drag.w + (e.clientX - drag.x), total - 220));
-    const pct = (next / total) * 100;
-    panes[0].style.flex = `0 0 ${pct}%`;
-    panes[1].style.flex = `1 1 auto`;
+    if (total <= 0) return;
+    const raw = (drag.w + (e.clientX - drag.x)) / total;
+    const snapped = nearestStop(Math.max(STOPS[0], Math.min(raw, STOPS[STOPS.length - 1])));
+    if (snapped === drag.last) return;          // nothing to repaint between stops
+    drag.last = snapped;
+    panes[0].style.flex = `0 0 ${(snapped * 100).toFixed(4)}%`;
+    panes[1].style.flex = '1 1 auto';
+    gutter.setAttribute('aria-valuetext', stopLabel(snapped));
+    gutter.dataset.stop = stopLabel(snapped);
   });
   const endDrag = e => {
     if (window.UPDATE) window.UPDATE.__dragging = false;
@@ -63,12 +92,26 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
   gutter.addEventListener('click', () => { if (!wide()) goTo(active === 0 ? 1 : 0); });
 
   // ---- edge strips: a horizontal drag here pans the scroller natively ----
-  // They exist purely so touch-action can differ from the editor's.
+  // They exist so touch-action can differ from the editor's (the editor is pan-y so
+  // a sideways drag in text belongs to selection).
+  //
+  // Each strip overhangs its pane by the peek width, so at the seam TWO strips
+  // overlap — pane N's right strip and pane N+1's left strip occupy the same pixels,
+  // and the later one in DOM order wins the hit test. A rule of "left strip means
+  // back, right strip means forward" therefore fires the WRONG DIRECTION at exactly
+  // the place the user actually taps.
+  //
+  // So the rule is stated in terms of the pane, not the strip: tapping any visible
+  // part of a pane that is not the current one goes TO that pane. Only when the strip
+  // belongs to the pane you are already on does it mean "move along".
   for (const edge of scroller.querySelectorAll('.edge')) {
     edge.addEventListener('click', e => {
       if (wide()) return;
-      goTo(edge.classList.contains('edge-l') ? active - 1 : active + 1);
       e.preventDefault();
+      const own = panes.indexOf(edge.closest('.pane'));
+      if (own === -1) return;
+      if (own !== active) { goTo(own); return; }
+      goTo(edge.classList.contains('edge-l') ? own - 1 : own + 1);
     });
   }
 
@@ -79,6 +122,13 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
 
   return {
     goTo,
+    stops: STOPS,
+    setSplit(fraction) {
+      const f = nearestStop(fraction);
+      panes[0].style.flex = `0 0 ${(f * 100).toFixed(4)}%`;
+      panes[1].style.flex = '1 1 auto';
+      return f;
+    },
     active: () => active,
     pane: i => panes[i],
     editor: i => panes[i].querySelector('.editor'),

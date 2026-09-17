@@ -363,6 +363,52 @@ and no physics to tune.
 A nested scroller **swallows the drag**: the inner one consumes the gesture and the
 outer never sees it. If a pane needs two scrollable regions, it needs two panes.
 
+### 4.35 ✎📱 Show a peek — a pane that fills the viewport looks like the only pane
+
+**Reported on device:** *"I can't get it to swipe to the paired note at all, and nothing
+but the primary one is visible."* Two separate causes, and the second is a design fault
+rather than a bug.
+
+**Cause 1 — the containing block.** Absolutely-positioned grab strips inside a scroll
+container resolve against **the scroll container's padding box, which spans the whole
+scrollable area** — not against the pane you wrote them inside. A `right: 0` strip
+therefore lands at the far end of the *last* pane, and the first pane has nothing on its
+right edge to grab. Give each pane `position: relative` so its strips anchor to it.
+`position` on a flex child with no offsets looks inert and is load-bearing.
+
+**Cause 2 — a pane exactly as wide as the viewport is indistinguishable from an app
+that has one pane.** There is no affordance and no evidence the second thing exists.
+The industry answer is the **peek**: make each pane slightly narrower than the viewport
+so a sliver of its neighbour stays on screen. It does two jobs — it *shows* the pair
+exists, and it gives the thumb a target.
+
+```css
+#panes { --peek: 30px; }
+.pane  { position: relative; flex: 0 0 calc(100% - var(--peek)); scroll-snap-align: start; }
+.pane:last-of-type { scroll-snap-align: end; }
+/* strips overhang their own pane so they sit ON TOP of the neighbour's sliver —
+   without the overhang the sliver belongs to the neighbouring editor, which is
+   pan-y, and the drag is swallowed */
+.edge   { position: absolute; top: 0; bottom: 0; width: calc(var(--peek) + 14px); touch-action: pan-x; }
+.edge-l { left:  calc(-1 * var(--peek)); }
+.edge-r { right: calc(-1 * var(--peek)); }
+```
+
+**The overlap trap this creates.** At the seam, pane N's right strip and pane N+1's
+left strip occupy the same pixels, and the later one in DOM order wins the hit test. A
+rule of *"left strip means back, right strip means forward"* then fires **the wrong
+direction at exactly the pixel the user actually taps.** State the rule in terms of the
+pane instead: **tapping any visible part of a pane that is not the current one goes to
+that pane**; only a strip on the pane you are already on means "move along." Overlap
+then cannot produce a wrong answer.
+
+### 4.36 ✎ Snap a draggable divider to integer fractions, not to pixels
+
+Every k/n for n in 2..5 gives nine stops. A split is then always a describable ratio —
+a half, a third, two fifths — which is easier to re-hit deliberately and easier to
+reason about than "roughly 47%". Snap **during** the drag, not on release: corrective
+snapping feels like a bug, magnetic snapping feels like a feature.
+
 ### 4.4 ✎ Caret versus scroll-snap
 
 A snap container holding a focused contenteditable **fights the browser's
@@ -796,3 +842,4 @@ revising it is cheap and mandatory.
 | Version | Date | Change |
 |---|---|---|
 | 1 | 2026-09-13 | Created from XENO's 181-lesson iOS field document. Deduplicated to ~90 rules, reorganised by build order, 14 departures recorded in §11, §0 epistemics and §3.5 keyboard handling added. |
+| 2 | 2026-09-17 | **First device report against the guide.** Swipe-to-paired-pane failed on a real iPhone. Added §4.35 (containing block for grab strips inside a scroll container; the peek pattern; the strip-overlap direction trap) and §4.36 (fraction-snapped dividers). §4.35 is 📱 — it outranks anything reasoned. Also added: never `parseFloat` a `calc()` custom property, `getPropertyValue` returns the unresolved token stream and reads 0 (found by the device suite, present in shipped code). |

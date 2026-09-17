@@ -12,6 +12,7 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  --peek: 30px;
   /* GUIDE §3.5 — give back exactly what the bar moved up by, so the text being
      edited is never behind the keyboard. */
   margin-bottom: var(--kb, 0px);
@@ -23,8 +24,18 @@
 }
 #panes::-webkit-scrollbar { display: none; }
 
+/* The "peek": each pane is slightly narrower than the viewport so a sliver of its
+   neighbour stays on screen. This is the standard carousel/ViewPager answer and it
+   does two jobs at once — it proves a second note exists, and it gives the thumb
+   something to grab. A pane that fills the viewport exactly is indistinguishable
+   from an app that has only one pane. */
 .pane {
-  flex: 0 0 100%;
+  /* position is LOAD-BEARING: without it the absolutely-positioned .edge strips
+     resolve against #panes, and inside a scroll container that puts .edge-r at the
+     far end of the SECOND pane — leaving the first pane with nothing on its right
+     edge to grab. That was the "can't swipe at all on iPhone" bug. */
+  position: relative;
+  flex: 0 0 calc(100% - var(--peek));
   min-width: 0;
   scroll-snap-align: start;
   display: flex;
@@ -32,6 +43,7 @@
   background: var(--paper);
   border-right: 1px solid var(--rule);
 }
+.pane:last-of-type { scroll-snap-align: end; }
 
 .pane-hd {
   flex: 0 0 auto;
@@ -55,8 +67,9 @@
 }
 .pane-hd button:hover { background: var(--chrome); color: var(--ink); }
 
-/* The scroller is only pannable from the edge strips and the gutter.
-   Inside the text, horizontal drag belongs to selection. */
+/* The scroller is pannable from the edge strips, the peek and the gutter. Inside the
+   text a horizontal drag belongs to selection, which is why this is pan-y and not a
+   JavaScript gesture handler — the platform arbitrates, not us. */
 .editor {
   flex: 1;
   min-height: 0;
@@ -67,15 +80,30 @@
 
 /* ---------- edge swipe zones + gutter handle ---------- */
 
+/* Each strip overhangs its own pane by the peek width, so it sits ON TOP of the
+   neighbour's visible sliver. Without the overhang the sliver belongs to the
+   neighbouring .editor, which is pan-y, and a drag there would be swallowed. */
 .edge {
   position: absolute;
   top: 0; bottom: 0;
-  width: 22px;
+  width: calc(var(--peek) + 14px);
   z-index: 4;
   touch-action: pan-x;
 }
-.edge-l { left: 0; }
-.edge-r { right: 0; }
+.edge-l { left: calc(-1 * var(--peek)); }
+.edge-r { right: calc(-1 * var(--peek)); }
+
+/* A hairline on the peek so the sliver reads as another note rather than as a
+   rendering artefact. */
+.pane::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  width: 1px;
+  background: var(--rule);
+  pointer-events: none;
+}
+.pane:last-of-type::after { display: none; }
 
 #gutter {
   position: fixed;
@@ -109,8 +137,10 @@
   #panes {
     overflow: hidden;
     scroll-snap-type: none;
+    --peek: 0px;
   }
   .pane { flex: 1 1 50%; }
+  .pane::after { display: none; }
   .edge { display: none; }
   #gutter {
     position: static;
