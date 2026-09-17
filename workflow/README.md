@@ -34,3 +34,19 @@ projects/
 New master session: read `HANDOFF-MASTER.md`, then `TRANSCRIPT.md`, then `_protocol/PROTOCOL.md`, then `_protocol/COORDINATION.md`, then `BOARD.md`. The handoff is the distillation; the transcript is the source — read both, they are not redundant.
 
 New project session: read `_protocol/PROTOCOL.md`, then your own `STATE.md`. Nothing else is required reading.
+
+---
+
+## Reading order for a session that takes this over
+
+1. `_protocol/PROTOCOL.md` — the rules
+2. `_protocol/COORDINATION.md` — who can reach whom, and the four tiers
+3. `HANDOFF-2026-09-17.md` — **everything the previous master knew**
+4. `_protocol/ONESHOT-WEBAPP.md` §0 — what you may and may not claim to have verified
+5. `BOARD.md` — current state of every project
+6. `QUEUE.md` — what is outstanding
+7. `TRANSCRIPT-2026-09-12_17.md` — the operator's own words, verbatim
+8. Then your project's `STATE.md`
+
+`HANDOFF-MASTER.md` is historical. Its capability findings are superseded by
+`COORDINATION.md` and its build order by `BOARD.md`.

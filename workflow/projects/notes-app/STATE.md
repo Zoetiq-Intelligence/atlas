@@ -1,9 +1,13 @@
 # Notes app — STATE
 
 > Owned by this project's thread. Per `_protocol/COORDINATION.md`, master (`claude-a2`) **is** this project's thread for v0 — it builds directly rather than commissioning a child session. Promote to a separate session if it outgrows master's context.
-> Last updated: 2026-09-13
+> Last updated: 2026-09-17
 
 ## One-line status
+
+**v1.5 LIVE and in daily use** on the operator's iPhone home screen and Edge on PC since 2026-09-16, signed in and syncing. 162 tests. Open work in `../../QUEUE.md`; full context in `../../HANDOFF-2026-09-17.md`.
+
+## Previous status (2026-09-13)
 
 **v0 skeleton built and verified in a real browser; ready to hand over.** ~1,800 lines, 32 files, zero dependencies, no build step. 26 model tests (node), 17 editor tests and 23 app tests (Chromium) all passing. Blocked only on credentials to go live. `COMMISSION.md` is written and the thread can be opened.
 
@@ -63,6 +67,10 @@ Skeleton complete. Waiting on credentials to fill `config.js`, push, and install
 Step 6 is the whole point of v0 and cannot be done from here.
 
 ## Blocked
+
+Nothing. Live. Next work item is live sync — see `../../QUEUE.md`.
+
+## Previously blocked (2026-09-13, all cleared)
 
 On XENO. The build is done; these are what stand between it and running on his devices:
 

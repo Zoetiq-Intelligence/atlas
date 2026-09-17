@@ -4,7 +4,7 @@
 > Per-project detail lives in `projects/*/STATE.md`.
 
 > Permanent record. Chat is transitory; this file is the state.
-> Last updated: 2026-09-13 (repo + hosting) · Master: `claude-a2 [128d7b]` (Cowork cloud session)
+> Last updated: 2026-09-17 · Master: `claude-a2 [128d7b]` (Cowork cloud session)
 > Coordination topology: see `_protocol/COORDINATION.md` — it supersedes the capability findings in `HANDOFF-MASTER.md`.
 
 ---
@@ -78,7 +78,14 @@ Skips the ladder deliberately: known territory (done many Safari add-to-home-scr
 - ⚠️ **Keyboard-up layout deferred by the operator.** Consequence recorded: v0 will not prove the interaction model, which `STATE.md` has called the day-one gate since 2026-09-11. Mitigated by routing all positioning through one function, so enabling it is a one-function change. Risk accepted, not eliminated.
 - **v0 is disposable. v1 is a rebuild from documents**, not a refactor of v0.
 
-- Status: **blocked on the operator for three inputs** — GitHub token + repo name, Supabase URL + anon key, and his PWA/service-worker lessons from an existing add-to-home-screen app.
+**v1.5 — LIVE since 2026-09-16.** Installed on the operator's iPhone home screen and in Edge on PC, signed in, syncing. `https://zoetiq-intelligence.github.io/atlas/notes/`
+
+- Built against `_protocol/ONESHOT-WEBAPP.md`, the working guide derived from the operator's 181-lesson iOS field document. 162 tests.
+- The keyboard-up layout, deferred from v0, is largely delivered via `visualViewport`. **Unconfirmed against the original spec — needs the device.**
+- Sign-in on the phone is an **OTP code, not a magic link**: iOS gives a home-screen app storage separate from Safari, so a link signs in the browser and leaves the installed app locked out forever. The Magic Link email template must keep `{{ .Token }}`.
+- ⚠ **2026-09-17: the app could not update itself for four days.** `isBusy()` counted the caret being in the editor as busy, and a notes app focuses its editor at boot. Fixed, with four regression assertions. See `HANDOFF-2026-09-17.md` §5.1b.
+
+- Status: **live and in daily use. Open work is tracked in `QUEUE.md`.**
 
 ---
 
@@ -182,6 +189,7 @@ Local Claude Code is a **peer, not a child** — there is no messaging link to i
 
 ## Open Questions
 
+- **Is the Edge extension really "not started"?** The attached project doc describes Omicron Alpha as a shipped MV3 extension with a gateway, Supabase schema, dashboard and 27 passing tests. This row is currently fiction. Raised 2026-09-13, unanswered.
 - Notes app: substitutes for the four platform-impossible parity items. Ruling is full parity; the gap is real and needs a per-item decision. **Now the explicit v1 gate** — no v1 code until it is written down.
 - Notes app: was deferring the keyboard-up layout intended? It is the item the project's own state file names as the day-one gate.
 - Overlay launcher: does it replace the taskbar's job, or only the launching part?
