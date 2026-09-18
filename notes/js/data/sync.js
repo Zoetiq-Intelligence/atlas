@@ -9,12 +9,29 @@
 import { all, set, del, get, kv, NOTES, FOLDERS, OUTBOX } from '../adapters/store.js';
 import { isTransient } from '../adapters/net.js';
 import * as api from './api.js';
+import * as realtime from './realtime.js';
 
 const CURSOR = 'pulledAt';
 let flushing = false;
 let timer = null;
 let listeners = [];
 let changed = [];
+
+// WHAT WE JUST WROTE, so we can recognise our own echo. A database broadcast ALWAYS
+// reaches the writer — broadcast.self only governs client-sent messages — so without
+// this every save comes back as news and costs a pointless round trip. The server's
+// updated_at is the discriminator, which is why the upsert's returned row is kept
+// rather than discarded.
+const recent = new Map();
+const RECENT_TTL = 15000;
+function remember(row) {
+  if (!row || !row.id) return;
+  recent.set(row.id, row.updated_at);
+  setTimeout(() => recent.delete(row.id), RECENT_TTL);
+}
+
+let liveState = 'off';
+export const live = () => liveState;
 
 export function onState(fn) { listeners.push(fn); }
 /** Called with the ids a pull actually overwrote. Empty pulls do not fire. */
@@ -59,14 +76,14 @@ export async function flush() {
         if (item.table === 'notes') {
           const n = await get(NOTES, item.id);
           if (!n) { await del(OUTBOX, item.id); continue; }
-          await api.upsertNote({
+          remember(await api.upsertNote({
             id: n.id, title: n.title, doc: n.doc, folder_id: n.folder_id,
             pinned: !!n.pinned, deleted_at: n.deleted_at || null,
-          });
+          }));
         } else {
           const f = await get(FOLDERS, item.id);
           if (!f) { await del(OUTBOX, item.id); continue; }
-          await api.upsertFolder({ id: f.id, name: f.name, sort: f.sort || 0 });
+          remember(await api.upsertFolder({ id: f.id, name: f.name, sort: f.sort || 0 }));
         }
         await del(OUTBOX, item.id);
       } catch (e) {
@@ -117,7 +134,48 @@ export async function pull() {
 // because broadcast delivery is at-most-once and a missed message must not mean a
 // missed edit. So this stays after realtime lands, just at a longer interval.
 const PULL_MS = 5000;
+const PULL_MS_LIVE = 30000;      // the floor stays under realtime, just further down
 const FLUSH_MS = 20000;
+
+let pullTimer = null;
+
+/**
+ * A burst of broadcasts (a restore, a paste across many notes) must not become a burst
+ * of pulls. One pull answers all of them, because a pull is "fetch everything that
+ * changed", not "fetch this row".
+ */
+let coalesce = null;
+function pullSoon() {
+  clearTimeout(coalesce);
+  coalesce = setTimeout(() => { coalesce = null; pull(); }, 120);
+}
+
+/**
+ * Live sync. The stream carries a POINTER — {op, kind, id, updated_at} — and the row
+ * comes over the PostgREST path that is already proven. Delivery is at-most-once, so
+ * the poll below is not redundant; it is what makes a dropped message cost seconds
+ * instead of an edit.
+ */
+export function startLive({ getToken, userId }) {
+  realtime.start({
+    getToken,
+    userId,
+    onChange: p => {
+      if (recent.get(p.id) === p.updated_at) return;      // our own write, already applied
+      pullSoon();
+    },
+    onState: s => {
+      liveState = s;
+      // Realtime being down is not the same as sync being down: HTTP still works and
+      // the poll still runs, so this must NOT paint the offline pip.
+      clearInterval(pullTimer);
+      pullTimer = setInterval(
+        () => { if (document.visibilityState === 'visible') pull(); },
+        s === 'live' ? PULL_MS_LIVE : PULL_MS);
+      if (s === 'live') pull();       // reconcile immediately on (re)join
+    },
+  });
+}
 
 export function start() {
   document.addEventListener('visibilitychange', () => {
@@ -125,5 +183,6 @@ export function start() {
   });
   window.addEventListener('online', () => { flush(); pull(); });
   setInterval(() => { if (document.visibilityState === 'visible') flush(); }, FLUSH_MS);
-  setInterval(() => { if (document.visibilityState === 'visible') pull(); }, PULL_MS);
+  clearInterval(pullTimer);
+  pullTimer = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, PULL_MS);
 }

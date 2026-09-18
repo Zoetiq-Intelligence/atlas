@@ -11,7 +11,7 @@
 | # | Item | Status | Notes |
 |---|---|---|---|
 | 0 | **Backups every 6h + revert** | **built 2026-09-18; needs the SQL run** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
-| 1 | **Live sync, sub-1s** | designed, researched, **not built** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
+| 1 | **Live sync, sub-1s** | **built 2026-09-18; needs the SQL run** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
 | 1b | **One SPA header** | **built 2026-09-18** | Replaced both per-pane headers. Title segments are sized to the divider's fraction so each sits above its pane, and double as the pane switcher; list / sync / new note are global and live there once. |
 | 1c | **Same note in both panes mirrors** | **fixed 2026-09-18** | Was a data-loss bug, not a display one: only the title mirrored, so the second pane's next save wrote its stale doc back over the edit. No network involved. |
 | 1d | **A visible app now pulls** | **fixed 2026-09-18** | `pull()` ran only on foreground/`online`, and the 20s interval flushed writes without ever reading. Two devices both open never saw each other. Now polls at 5s AND reports which ids changed, because writing to IndexedDB is not the same as reaching the screen — nothing re-read the store. This is the floor under live sync, not a substitute for it. |
@@ -24,6 +24,34 @@
 | 8 | **150ms smootherstep transitions everywhere** | **built 2026-09-18** | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
 
 ---
+
+## Item 10 — sending a note to a pane (revised twice, 2026-09-18)
+
+First ask: *"a separate note picker for left and right, not one that relies on what we
+clicked into last."* Then, immediately: *"actually scratch that - just next to each note
+is a left-pane vs. right-pane set of buttons"*, and *"or we can touch the note and swipe
+left or right and it goes that way."*
+
+So: **one list, explicit destination per row.** Two small buttons on each row, and a
+horizontal swipe on the row as the fast path — swipe left sends it to the left pane,
+right to the right. Both target a pane by name, so nothing depends on which pane was
+touched last.
+
+⚠ Note the collision to design around: rows live in `#sidebar`, and a horizontal drag
+there has to not fight the slide-over's own dismiss gesture or the pane scroller
+underneath. The existing answer in this app is `touch-action`, not JavaScript — the
+row wants `pan-y` with the swipe handled per-row, the same shape as `.editor` vs the
+edge strips.
+
+## Item 11 — pairing notes ⚠ UNRESOLVED
+
+Asked 2026-09-18: *"the ability to actually attach notes to eachother as at least pairs,
+so we just open up a pair and both come up on the left/right."* The follow-up "scratch
+that" most plausibly referred to the separate-picker idea it immediately replaced, not
+to pairing — **but that is an inference, and it has not been confirmed.** Ask before
+building; it is the only item here that needs a schema change (a `pair_id` group key on
+`notes.note`, chosen over a symmetric `paired_with` so "at least pairs" can grow to sets
+without a second migration).
 
 ## ⚠ 2026-09-18 — items 4, 5, 6 and 7 are ONE feature, not four
 

@@ -160,6 +160,9 @@ async function startApp() {
   });
 
   sync.start();
+  // Live sync needs the user's own JWT: a private channel authorises against
+  // auth.uid(), and the publishable key is silently ignored as an access token.
+  sync.startLive({ getToken: auth.getToken, userId: () => (auth.current() || {}).user_id });
 
   // Snapshots. The scheduler is started here rather than at module load because it
   // needs a signed-in session to be worth anything — an unauthenticated RPC just 401s.

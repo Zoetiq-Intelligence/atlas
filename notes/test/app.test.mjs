@@ -19,6 +19,21 @@ const folders = [{ id: 'f1', name: 'Work', sort: 0 }];
 const b = await chromium.launch({ executablePath: CHROME });
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const p = await ctx.newPage();
+
+// Live sync opens a real WebSocket, which cannot reach Supabase from a test runner and
+// logs a console error that would fail this suite. Stub it with a socket that opens and
+// then says nothing: the client sends its join and waits, so there are no retries, no
+// timers churning, and no noise. The PROTOCOL itself is tested for real, against a
+// driveable fake, in realtime.test.mjs.
+await p.addInitScript(() => {
+  window.WebSocket = class {
+    constructor(url) { this.url = url; this.readyState = 0;
+      setTimeout(() => { this.readyState = 1; if (this.onopen) this.onopen(); }, 1); }
+    send() {}
+    close() { this.readyState = 3; }
+  };
+});
+
 // Declared up here because the console filter below closes over it: the
 // "backend not installed" test deliberately provokes 404s, and those must not be
 // counted as page errors — while every OTHER unexpected 404 still is.

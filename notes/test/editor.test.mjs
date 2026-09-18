@@ -12,6 +12,11 @@ const ck=(c,m)=>{ c?pass++:(fail++,console.log('  FAIL:',m)); };
 
 const b = await chromium.launch({ executablePath: CHROME });
 const p = await b.newPage();
+// The browser asks the server root for /favicon.ico on every navigation; python's
+// http.server answers 404 and the page logs an error, which made this suite exit 1
+// on every run since it was written — 17 assertions passing behind a red exit code.
+// Answered here rather than filtered, so a 404 for anything else still fails the run.
+await p.route('**/favicon.ico', r => r.fulfill({ status: 200, contentType: 'image/x-icon', body: '' }));
 const errs=[]; p.on('pageerror', e=>errs.push(String(e)));
 p.on('console', m=>{ if(m.type()==='error') errs.push(m.text()); });
 await p.goto(base + '/test/harness.html');
