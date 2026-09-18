@@ -141,6 +141,24 @@ async function startApp() {
   $('#signout').onclick = async () => { await auth.signOut(); location.reload(); };
 
   sync.onState(s => { $('#pip').dataset.s = s; });
+
+  // A pull that changed something has to reach the screen. The list is cheap to
+  // repaint; an open editor is not, because reloading it destroys the caret and can
+  // clobber text that has not reached storage yet. So a pane is only reloaded when it
+  // is showing one of the changed notes AND nobody is mid-edit in it.
+  sync.onChange(async ids => {
+    await refresh();
+    for (const i of [0, 1]) {
+      const id = openIds[i];
+      if (!id || !ids.includes(id)) continue;
+      if (isEditingIn(i)) continue;
+      const n = await get(NOTES, id);
+      if (!n) continue;
+      editors[i].load(id, coerce(n.doc));
+      topbar.setTitle(i, n.title);
+    }
+  });
+
   sync.start();
 
   // Snapshots. The scheduler is started here rather than at module load because it
@@ -289,6 +307,13 @@ let lastKeystroke = 0;
 const TYPING_GRACE_MS = 1500;
 document.addEventListener('input', () => { lastKeystroke = Date.now(); }, true);
 
+/** True when pane i holds work a reload or a reload-in-place would destroy. */
+function isEditingIn(i) {
+  if (savePending[i]) return true;
+  if (focused === i && Date.now() - lastKeystroke < TYPING_GRACE_MS) return true;
+  return false;
+}
+
 function isBusy() {
   if (savePending.some(Boolean)) return true;                   // an edit has not reached storage
   if (dragging || (window.UPDATE && window.UPDATE.__dragging)) return true;  // DOM-only gesture
@@ -323,9 +348,17 @@ function persist(i, doc, title) {
     n.doc = doc;
     n.title = title;
     await sync.saveLocal(n);
-    // the other pane may be showing the same note
+    // THE SAME NOTE OPEN IN BOTH PANES. Only the title was being mirrored, so the
+    // other pane kept rendering a document that no longer existed — and worse, its
+    // own next save would write that stale copy back over this one. Not a display
+    // bug: a way to lose text on ONE device with no network involved.
+    // The doc is cloned rather than shared; two editors holding one mutable object
+    // would each apply their own edits to the other's state.
     const other = i === 0 ? 1 : 0;
-    if (openIds[other] === id) topbar.setTitle(other, title);
+    if (openIds[other] === id) {
+      topbar.setTitle(other, title);
+      if (!isEditingIn(other)) editors[other].load(id, coerce(JSON.parse(JSON.stringify(doc))));
+    }
     notes = await sync.localNotes();
     sidebar.set(notes, folders, openIds[focused]);
   }, 400);

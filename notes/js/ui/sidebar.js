@@ -5,6 +5,7 @@
 // instant, no network. A tsvector column is the v1 move, not the v0 one.
 
 import { plainText, coerce } from '../model/doc.js';
+import { DUR } from './motion.js';
 
 const PLUS = '<svg viewBox="0 0 20 20" aria-hidden="true" style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round"><path d="M10 4v12M4 10h12"/></svg>';
 
@@ -83,7 +84,7 @@ export function createSidebar(el, scrim, { onOpen, onNew, onNewFolder }) {
   function close() {
     el.classList.remove('open');
     scrim.hidden = true;
-    setTimeout(() => { if (!el.classList.contains('open')) el.hidden = true; }, 220);
+    setTimeout(() => { if (!el.classList.contains('open')) el.hidden = true; }, DUR);
   }
 
   return {

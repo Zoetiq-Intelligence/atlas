@@ -14,8 +14,11 @@ const CURSOR = 'pulledAt';
 let flushing = false;
 let timer = null;
 let listeners = [];
+let changed = [];
 
 export function onState(fn) { listeners.push(fn); }
+/** Called with the ids a pull actually overwrote. Empty pulls do not fire. */
+export function onChange(fn) { changed.push(fn); }
 function emit(s) { listeners.forEach(f => f(s)); }
 
 export async function localNotes() {
@@ -81,14 +84,21 @@ export async function pull() {
   try {
     const [notes, folders] = await Promise.all([api.fetchNotes(), api.fetchFolders()]);
     for (const f of folders) await set(FOLDERS, f);
+    // WHICH ids actually moved. Writing to IndexedDB is not the end of a pull: nothing
+    // on screen re-reads the store on its own, so before this the poll was fetching
+    // rows into a database nobody looked at again until the next boot. A pull has to
+    // say what it changed or it may as well not have run.
+    const touched = [];
     for (const n of notes) {
       const mine = await get(NOTES, n.id);
       // last-write-wins by updated_at; an unflushed local edit survives the pull
       if (mine && mine.updated_at > n.updated_at) continue;
+      if (!mine || mine.updated_at !== n.updated_at) touched.push(n.id);
       await set(NOTES, n);
     }
     await kv.set(CURSOR, new Date().toISOString());
     emit('ok');
+    if (touched.length) changed.forEach(f => { try { f(touched); } catch (e) { /* never break the loop */ } });
     return true;
   } catch {
     emit('off');
@@ -96,10 +106,24 @@ export async function pull() {
   }
 }
 
+// A VISIBLE APP NEVER PULLED. Before this, pull() ran only on visibilitychange and
+// on `online`, while the 20s interval flushed writes and never read — so two devices
+// both sitting open, or two panes on one device, would not see each other's edits
+// until something was backgrounded and foregrounded. That is not a sync latency
+// problem, it is no sync at all in the case that matters most.
+//
+// This is the FLOOR, not the answer. Live sync (QUEUE #1) is a database broadcast that
+// gets this under a second; the design says explicitly to keep a poll underneath it,
+// because broadcast delivery is at-most-once and a missed message must not mean a
+// missed edit. So this stays after realtime lands, just at a longer interval.
+const PULL_MS = 5000;
+const FLUSH_MS = 20000;
+
 export function start() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { pull(); flush(); }
   });
   window.addEventListener('online', () => { flush(); pull(); });
-  setInterval(() => { if (document.visibilityState === 'visible') flush(); }, 20000);
+  setInterval(() => { if (document.visibilityState === 'visible') flush(); }, FLUSH_MS);
+  setInterval(() => { if (document.visibilityState === 'visible') pull(); }, PULL_MS);
 }

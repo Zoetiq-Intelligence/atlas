@@ -13,13 +13,15 @@
 | 0 | **Backups every 6h + revert** | **built 2026-09-18; needs the SQL run** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
 | 1 | **Live sync, sub-1s** | designed, researched, **not built** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
 | 1b | **One SPA header** | **built 2026-09-18** | Replaced both per-pane headers. Title segments are sized to the divider's fraction so each sits above its pane, and double as the pane switcher; list / sync / new note are global and live there once. |
+| 1c | **Same note in both panes mirrors** | **fixed 2026-09-18** | Was a data-loss bug, not a display one: only the title mirrored, so the second pane's next save wrote its stale doc back over the edit. No network involved. |
+| 1d | **A visible app now pulls** | **fixed 2026-09-18** | `pull()` ran only on foreground/`online`, and the 20s interval flushed writes without ever reading. Two devices both open never saw each other. Now polls at 5s AND reports which ids changed, because writing to IndexedDB is not the same as reaching the screen — nothing re-read the store. This is the floor under live sync, not a substitute for it. |
 | 2 | **Search** — "within note that's open, and then global" | not started | Only the sidebar filters today, client-side. |
 | 3 | **Drag-and-drop line reordering** — "in a way that is fast on phone" | not started | |
 | 4 | **Footer restructure** | not started | "every single thing that we can do should be in the footer somehow, minimize the number of layers and always indicate on a button how many things are within it in a subtle way somehow". Plus new styles, plus deciding what is static and what scrolls. |
 | 5 | **Hotkeys, Spacebar as modifier** | designed, accepted in principle | Key groups: `1234` `qwer` `asdf` `zxcv` `5tgb`. Proposal below. |
 | 6 | **Custom context menu** | ruled, not built | **Windows: suppress the native menu.** **iOS: supplement rather than replace, spaced to avoid colliding with the system callout.** |
 | 7 | **Tooltips on every button, instant** | not started | No hover delay. |
-| 8 | **150ms smootherstep transitions everywhere** | not started | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
+| 8 | **150ms smootherstep transitions everywhere** | **built 2026-09-18** | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
 
 ---
 

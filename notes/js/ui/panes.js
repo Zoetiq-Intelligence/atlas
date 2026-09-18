@@ -5,6 +5,8 @@
 // JavaScript — .editor is pan-y so a horizontal drag in the text belongs to
 // selection, while the edge strips and the gutter are pan-x.
 
+import { animateScrollLeft } from './motion.js';
+
 const DESKTOP = '(min-width: 820px)';
 
 /**
@@ -37,23 +39,62 @@ export function createPanes(scroller, gutter, { onActive = () => {}, onSplit = (
 
   const wide = () => window.matchMedia(DESKTOP).matches;
 
+  let cancelAnim = null;
+  let animating = false;
+
+  /** Where pane i rests: its own offset, clamped so the last pane ends flush right. */
+  function restFor(i) {
+    const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    return Math.min(panes[i].offsetLeft, max);
+  }
+
   function goTo(i, smooth = true) {
     i = Math.max(0, Math.min(i, panes.length - 1));
     active = i;
     if (!wide()) {
-      scroller.scrollTo({ left: panes[i].offsetLeft, behavior: smooth ? 'smooth' : 'auto' });
+      if (cancelAnim) cancelAnim();
+      const to = restFor(i);
+      if (!smooth) {
+        scroller.scrollLeft = to;
+      } else {
+        // scroll-snap and a scripted scroll are two authorities over one number, and
+        // the snap wins mid-flight — so it is suspended for the 150ms and restored to
+        // whatever it was, because main.js owns that value for the caret's sake.
+        const saved = scroller.style.scrollSnapType;
+        scroller.style.scrollSnapType = 'none';
+        animating = true;
+        cancelAnim = animateScrollLeft(scroller, to, {
+          onDone: () => { animating = false; cancelAnim = null; scroller.style.scrollSnapType = saved; },
+        });
+      }
     }
     onActive(i);
   }
 
-  // track which pane the scroller settled on
+  // track which pane the scroller settled on, and finish the job if it settled
+  // between two of them
   let t = null;
   scroller.addEventListener('scroll', () => {
-    if (wide()) return;
+    if (wide() || animating) return;
     clearTimeout(t);
     t = setTimeout(() => {
-      const i = Math.round(scroller.scrollLeft / Math.max(1, scroller.clientWidth));
-      if (i !== active) { active = i; onActive(i); }
+      if (animating) return;
+      // Nearest by REST POSITION, not by dividing scrollLeft by the viewport width:
+      // the last pane rests flush right rather than at its own offset, so the naive
+      // ratio misidentifies it whenever the peek makes the panes narrower than the
+      // viewport — which is always.
+      let best = 0;
+      for (let i = 1; i < panes.length; i++) {
+        if (Math.abs(restFor(i) - scroller.scrollLeft) < Math.abs(restFor(best) - scroller.scrollLeft)) best = i;
+      }
+      // CSS scroll-snap is switched OFF whenever the editor has focus (GUIDE §4.4,
+      // main.js) — and a notes app focuses its editor at boot and keeps it. So in
+      // practice nothing was ever settling a half-finished swipe, which is the other
+      // half of the "peek on the wrong side" report. Settle it ourselves, on the same
+      // curve as everything else.
+      const off = Math.abs(restFor(best) - scroller.scrollLeft);
+      if (best !== active) { active = best; onActive(best); }
+      if (off > 2) goTo(best);
     }, 90);
   }, { passive: true });
 

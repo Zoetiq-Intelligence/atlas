@@ -220,6 +220,37 @@ ck(await p.locator('.nrow').count() >= 1, 'search matches body text, not just ti
 await p.mouse.click(378, 500);   // the visible sliver beside the slide-over
 await p.waitForTimeout(300);
 
+// --- the same note open in BOTH panes --------------------------------------
+// Reported 2026-09-18: "even if i have the same note open on both sides of phone,
+// editing one doesn't sync to the other". No network is involved in this one. Only
+// the title was mirrored, so the second pane went on rendering a document that no
+// longer existed — and its own next save would write that stale copy back over the
+// edit. A way to lose text on a single device.
+await p.setViewportSize({ width: 1280, height: 820 });
+await p.waitForTimeout(250);
+await p.click('.pane:nth-of-type(2) .editor .txt');     // focus pane 1
+await p.waitForTimeout(150);
+await p.click('#topbar [data-act="list"]');             // then open the list
+await p.waitForTimeout(320);
+await p.locator('.nrow').first().click();               // opens into the focused pane
+await p.waitForTimeout(450);
+
+const titlesBefore = await p.evaluate(() => [...document.querySelectorAll('.tab .tt')].map(e => e.textContent));
+ck(titlesBefore[0] === titlesBefore[1],
+   'the same note can be opened into both panes, got ' + JSON.stringify(titlesBefore));
+
+await p.click('.pane:nth-of-type(1) .editor .txt');
+await p.keyboard.press('End');
+await p.keyboard.type(' MIRRORED');
+await p.waitForTimeout(1200);
+const pane1Text = await p.locator('.pane:nth-of-type(2) .editor').innerText();
+ck(pane1Text.includes('MIRRORED'),
+   'an edit in one pane reaches the other pane showing the same note, got: '
+   + JSON.stringify(pane1Text.slice(0, 70)));
+
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(250);
+
 // --- backups ---------------------------------------------------------------
 // The operator's requirement: a snapshot whenever an instance is on and six hours
 // have passed, with a way back. The snapshot is built server-side, so these tests

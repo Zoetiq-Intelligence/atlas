@@ -172,6 +172,52 @@ ck(hit && hit.isEdge, `the peek region hit-tests to a pannable edge strip, got: 
 // shifted down onto the midpoint the thumb uses.
 const gutterPE = await p.evaluate(() => getComputedStyle(document.getElementById('gutter')).pointerEvents);
 ck(gutterPE === 'none', `the phone gutter is decoration only, got pointer-events: ${gutterPE}`);
+
+// CAUSE 4: DEAD SCROLLABLE WIDTH. The edge strips overhang by the peek so they cover
+// the neighbour's sliver — but the FIRST and LAST panes have no neighbour on their
+// outer side, so that overhang is scroll width containing nothing. Measured: two
+// 360px panes total 720 while scrollWidth was 749. The 29px surplus parks the last
+// pane short of the right edge, putting the peek on the WRONG SIDE and showing empty
+// space where the other note should be.
+const geom = await p.evaluate(() => {
+  const sc = document.querySelector('#panes');
+  const w = [...sc.querySelectorAll('.pane')].reduce((a, e) => a + e.getBoundingClientRect().width, 0);
+  return { scrollWidth: sc.scrollWidth, paneTotal: Math.round(w), clientWidth: sc.clientWidth };
+});
+ck(Math.abs(geom.scrollWidth - geom.paneTotal) <= 2,
+   `no dead scrollable width: scrollWidth ${geom.scrollWidth} vs panes ${geom.paneTotal}`);
+
+// ...and the consequence, stated as the user sees it: at the last pane the sliver of
+// the OTHER note is on the left, and the current note is flush to the right edge.
+await p.evaluate(() => window.__panes__.goTo(1));
+await p.waitForTimeout(400);
+const atLast = await p.evaluate(() => {
+  const ps = [...document.querySelectorAll('.pane')].map(e => e.getBoundingClientRect());
+  return { prevRight: +ps[0].right.toFixed(1), curRight: +ps[1].right.toFixed(1), vw: window.innerWidth };
+});
+ck(Math.abs(atLast.curRight - atLast.vw) <= 2,
+   `the open pane sits flush right at the last pane (right ${atLast.curRight} vs ${atLast.vw})`);
+ck(atLast.prevRight > 8,
+   `the peek is on the LEFT at the last pane, showing the other note (${atLast.prevRight}px)`);
+await p.evaluate(() => window.__panes__.goTo(0));
+await p.waitForTimeout(400);
+
+// ---- motion: one duration, one curve, and the CSS sample must match the maths ----
+const dur = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--dur').trim());
+ck(dur === '150ms', `every transition runs on --dur, got ${dur}`);
+
+// The CSS samples smootherstep because CSS cannot evaluate a polynomial; JS evaluates
+// the real thing. If those two ever drift, the pane switch and the sidebar stop being
+// the same motion, which is precisely what "ALL transitions" rules out.
+const ease = await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ease-smoother').trim());
+if (/^linear\(/.test(ease)) {
+  const pts = ease.replace(/^linear\(|\)$/g, '').split(',').map(v => parseFloat(v));
+  const f = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const worst = pts.reduce((m, v, i) => Math.max(m, Math.abs(v - f(i / (pts.length - 1)))), 0);
+  ck(worst < 0.002, `CSS linear() matches 6t^5-15t^4+10t^3 (worst error ${worst.toFixed(5)})`);
+} else {
+  ck(false, `--ease-smoother should resolve to linear() in this engine, got ${ease}`);
+}
 ck(hit && hit.touchAction === 'pan-x', `that strip is pan-x so the drag pans the scroller (got ${hit && hit.touchAction})`);
 
 // And the switch actually moves the scroller.
