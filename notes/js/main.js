@@ -12,6 +12,8 @@ import { createFooter } from './ui/footer.js';
 import { createSidebar } from './ui/sidebar.js';
 import * as layout from './ui/layout.js';
 import { mount as mountDiag } from './ui/diag.js';
+import { mount as mountBackups } from './ui/backups.js';
+import * as backup from './data/backup.js';
 
 const $ = s => document.querySelector(s);
 const now = () => new Date().toISOString();
@@ -132,6 +134,17 @@ async function startApp() {
   sync.onState(s => { $('#pip').dataset.s = s; });
   sync.start();
 
+  // Snapshots. The scheduler is started here rather than at module load because it
+  // needs a signed-in session to be worth anything — an unauthenticated RPC just 401s.
+  $('#backups').onclick = () => mountBackups($('#backups-panel'), { onRestored });
+  backup.onState(s => {
+    // A backup that cannot run must not be silent. It is the one feature whose whole
+    // value is that it already happened by the time you need it, so a failure that
+    // only shows up when you go looking is a failure you find too late.
+    if (!s.ok) console.warn('[backup]', s.notInstalled ? 'SQL not installed' : s.error);
+  });
+  backup.start();
+
   // ---- GUIDE §7 — hand the update layer its predicates and its surfaces ----
   const U = (window.UPDATE = window.UPDATE || {});
   U.isBusy = isBusy;
@@ -173,6 +186,15 @@ async function startApp() {
   focused = 0;
   editors[0].focus();
   sync.flush();
+}
+
+// After a restore every note may have changed, both panes may be showing a note that
+// is now different, and the local IndexedDB is stale. Pulling and then reloading is
+// cheaper to get right than reconciling two open editors in place — and a restore is
+// a deliberate act, so the reload costs nothing anyone is in the middle of.
+async function onRestored() {
+  await sync.pull();
+  location.reload();
 }
 
 async function refresh() {

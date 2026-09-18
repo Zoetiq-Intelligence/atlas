@@ -102,5 +102,44 @@ catch { fail++; console.log('  FAIL: .nojekyll missing'); }
 try { statSync(join(ATLAS, 'reset', 'index.html')); pass++; }
 catch { fail++; console.log('  FAIL: reset page missing'); }
 
+// --- the backup SQL keeps its central promise ------------------------------
+// restore_snapshot is the one function in this project that can destroy a day's work.
+// Its whole safety argument is that it soft-deletes via the same `deleted_at` column
+// the app already uses, and hard-deletes NOTHING. That is a property of the text, so a
+// grep is exactly the right guard — and the SQL is pasted into a dashboard by hand, so
+// no runtime test will ever cover it.
+const backupSql = read(join(ATLAS, 'workflow', '_protocol', 'SETUP-BACKUP.sql'));
+const sqlNoComments = backupSql.replace(/^\s*--.*$/gm, '');
+
+const restoreBody = sqlNoComments.slice(sqlNoComments.indexOf('function notes.restore_snapshot'));
+ck(!/delete\s+from\s+notes\.note\b/i.test(restoreBody),
+   'restore_snapshot must never hard-delete a note — it soft-deletes via deleted_at');
+ck(!/delete\s+from\s+notes\.folder\b/i.test(restoreBody),
+   'restore_snapshot must never delete a folder — on delete set null would detach notes');
+ck(/set deleted_at = now\(\)/.test(restoreBody),
+   'restore_snapshot soft-deletes what the snapshot does not contain');
+ck(/take_snapshot\(0, 'pre-restore'\)/.test(restoreBody),
+   'restore_snapshot takes a safety snapshot first, so a restore is itself undoable');
+
+// SETUP-NOTES.sql granted on "all tables in schema notes", which covers only the
+// tables that existed when it ran. A new table gets nothing, and the symptom is a 404
+// that looks exactly like the schema not being exposed.
+ck(/grant[\s\S]*?on notes\.snapshot to authenticated/i.test(sqlNoComments),
+   'the snapshot table grants explicitly — it inherits nothing from SETUP-NOTES.sql');
+ck(/enable row level security/i.test(sqlNoComments) && /create policy "own snapshots"/i.test(sqlNoComments),
+   'the snapshot table has RLS enabled and an owner policy');
+ck(/notify pgrst, 'reload schema'/.test(sqlNoComments),
+   'the SQL reloads the PostgREST schema cache, or the new function 404s until it does');
+
+// The automatic path must never pass 0 — that would snapshot on every single check.
+// Strip LINE comments too, not just block comments. This file's own history is the
+// argument: the guards once fired on the explanatory comments that named every
+// forbidden string. backup.js has a comment saying it stays out of isBusy() — which
+// is precisely the string this asserts is absent from the code.
+const stripLine = t => t.replace(/(^|[^:])\/\/.*$/gm, '$1');
+const backupJs = stripLine(stripComments(read(join(APP, 'js', 'data', 'backup.js'))));
+ck(/INTERVAL_MS = 6 \* 60 \* 60 \* 1000/.test(backupJs), 'the automatic interval is six hours');
+ck(!/isBusy/.test(backupJs), 'backup.js stays out of the idle gate — see main.js §5.1b');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -2,10 +2,15 @@
 
 > Master owns this file. Updated 2026-09-17.
 > Ruling 2026-09-17: **keep iterating, no design-doc rebuild, until critical mass.**
+> Ruling 2026-09-18: **master works directly on `main`; every push deploys.** The
+> successor session can push (handoff §3.1 resolved), so a feature branch only adds a
+> merge step between a fix and the operator's phone. Consequence accepted and stated:
+> a bad push reaches the device, so the full suite runs before every push.
 > Operator's exact wording is preserved where the wording carries the requirement.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
+| 0 | **Backups every 6h + revert** | **built 2026-09-18; needs the SQL run** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
 | 1 | **Live sync, sub-1s** | designed, researched, **not built** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
 | 2 | **Search** — "within note that's open, and then global" | not started | Only the sidebar filters today, client-side. |
 | 3 | **Drag-and-drop line reordering** — "in a way that is fast on phone" | not started | |

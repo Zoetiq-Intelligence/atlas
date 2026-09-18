@@ -320,7 +320,10 @@
   box-shadow: 0 2px 12px rgba(0,0,0,.18);
 }
 
-#diag {
+/* Both full-screen panels. Fixed and inset-padded rather than in normal flow: the
+   sidebar and footer are fixed, so a panel left in flow renders BEHIND them and its
+   buttons are unreachable — visible, and not clickable. */
+#diag, #backups-panel {
   position: fixed; inset: 0; z-index: 50;
   background: var(--paper); overflow-y: auto;
   padding: calc(var(--sa-top) + 14px) calc(var(--sa-right) + 14px)

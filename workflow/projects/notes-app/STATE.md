@@ -1,9 +1,54 @@
 # Notes app — STATE
 
 > Owned by this project's thread. Per `_protocol/COORDINATION.md`, master (`claude-a2`) **is** this project's thread for v0 — it builds directly rather than commissioning a child session. Promote to a separate session if it outgrows master's context.
-> Last updated: 2026-09-17
+> Last updated: 2026-09-18
 
 ## One-line status
+
+**v1.5 LIVE and in daily use, now with snapshot backups (2026-09-18) — inert until the
+SQL is run.** Everything below the next section is unchanged from 2026-09-17.
+
+## Backups — added 2026-09-18
+
+Operator's ask, verbatim: *"we need data backups for the actual state of the entire
+notes system whenever one of our instances is on and 6 hours has passed since the last
+backup, with some way to revert, just in case we break things."*
+
+**Shape.** `notes.snapshot` table + `notes.take_snapshot(min_interval_seconds, reason)`
++ `notes.restore_snapshot(id)`. The client decides *when*; Postgres decides *what*.
+
+- `js/data/backup.js` — the scheduler and the RPC calls. Checks at boot, on every
+  foreground, and every 15 min while open; the server enforces the six hours as well,
+  so two devices cannot both take one (advisory lock on the user id).
+- `js/ui/backups.js` — the list and the revert, reached from the sidebar footer.
+- `_protocol/SETUP-BACKUP.sql` — **must be run by the operator before any of it works.**
+  Until then the app reports "not set up" rather than failing silently.
+
+**Why the snapshot is built server-side, not uploaded from the device.** Backing up the
+local IndexedDB copy backs up whatever *that* device held — possibly stale, possibly
+mid-sync. The canonical state is the thing worth protecting, so the database snapshots
+itself and the client sends no note content at all.
+
+**Why restore is safe to press.** It takes a `pre-restore` snapshot first, and notes
+absent from the snapshot are soft-deleted through the same `deleted_at` column the app
+already uses for Recently Deleted. Nothing is ever hard-deleted, so there are two
+independent routes back. Folders absent from the snapshot are left alone deliberately:
+`notes.note` references `notes.folder` with `on delete set null`, so removing one would
+silently detach notes the snapshot says belong to it. Guarded by four lexical
+assertions in `shell.test.mjs` — the SQL is pasted into a dashboard by hand, so no
+runtime test will ever cover it.
+
+**Deliberately NOT in `isBusy()`.** A reload during the RPC either lands after the
+server committed or before it, and the next foreground retries. See the §5.1b comment
+in `main.js` for why adding to that predicate is not free.
+
+**A real bug the tests caught before it shipped:** `#backups-panel` had no CSS, so it
+rendered in normal flow *behind* the fixed sidebar and footer — visible in the DOM,
+unclickable in the app. Now shares the `#diag` rule.
+
+**Tests: 186, up from 162.**
+
+## Previous one-line status (2026-09-17)
 
 **v1.5 LIVE and in daily use** on the operator's iPhone home screen and Edge on PC since 2026-09-16, signed in and syncing. 162 tests. Open work in `../../QUEUE.md`; full context in `../../HANDOFF-2026-09-17.md`.
 

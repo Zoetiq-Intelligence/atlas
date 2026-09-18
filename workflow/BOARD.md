@@ -4,7 +4,7 @@
 > Per-project detail lives in `projects/*/STATE.md`.
 
 > Permanent record. Chat is transitory; this file is the state.
-> Last updated: 2026-09-17 · Master: `claude-a2 [128d7b]` (Cowork cloud session)
+> Last updated: 2026-09-18 · Master: successor cloud session (has GitHub write access)
 > Coordination topology: see `_protocol/COORDINATION.md` — it supersedes the capability findings in `HANDOFF-MASTER.md`.
 
 ---
@@ -85,6 +85,7 @@ Skips the ladder deliberately: known territory (done many Safari add-to-home-scr
 - Sign-in on the phone is an **OTP code, not a magic link**: iOS gives a home-screen app storage separate from Safari, so a link signs in the browser and leaves the installed app locked out forever. The Magic Link email template must keep `{{ .Token }}`.
 - ⚠ **2026-09-17: the app could not update itself for four days.** `isBusy()` counted the caret being in the editor as busy, and a notes app focuses its editor at boot. Fixed, with four regression assertions. See `HANDOFF-2026-09-17.md` §5.1b.
 
+- **2026-09-18 — snapshot backups added.** Every six hours while an instance is open, plus a manual button and a revert UI in the sidebar. **Inert until `_protocol/SETUP-BACKUP.sql` is run on the Supabase project.**
 - Status: **live and in daily use. Open work is tracked in `QUEUE.md`.**
 
 ---
@@ -166,6 +167,8 @@ Split out of the Claude project — it was a different project wearing that one'
 - **2026-09-13 — One repo: `Zoetiq-Intelligence/atlas`.** All one-shots and all workflow work live here. Notes app serves from `/notes/`, so the site is `https://zoetiq-intelligence.github.io/atlas/notes/`.
 - **2026-09-13 — `atlas` is PUBLIC, and that is temporary.** Forced by Pages: a private repo's site sits behind a GitHub login gate, and that gate breaks add-to-home-screen standalone launches. ⚠️ **Consequence to account for: everything in this repo is publicly readable — board, transcripts, design docs, and the Omicron Alpha architecture notes including its pricing and plan details.** Escape hatch when privacy is needed: **Cloudflare Pages or Netlify deploying from a private repo** — private source, public site, no auth gate. Nothing about the app has to change; it is a hosting swap. Revisit before anything genuinely sensitive is committed.
 - **2026-09-13 — An Electron workstation app is a stated destination**, with cross-device sync as the invariant across every surface. Recorded as intent, not yet scoped. ⚠️ Note the tension with the existing Electron warning above: rung 4 trades away in-page context. That warning was written about *augmenting* a browser, where the loss is fatal. A notes app is different — it is its own product, and `BOARD.md`'s own rule says rung 4 is legitimate when the app *is* the product. **But rung 3 (local companion) should be exhausted first** — it delivers filesystem access and long-running work while the client stays a web app on every device. Decide with a real need in hand, not in advance.
+- **2026-09-18 — Master pushes directly to `main`; every push deploys.** The proxy block in `HANDOFF-2026-09-17.md` §3.1 is resolved — this session was created with `atlas` attached and push is verified. Operator's call. The cost is that a broken push reaches his daily-driver app with no staging step, so the full test suite is a precondition of every push, not a nicety.
+- **2026-09-18 — Backups are server-side snapshots, taken by the client's clock.** A `notes.snapshot` table plus `take_snapshot` / `restore_snapshot` functions; the client decides *when* and Postgres decides *what*. Rejected: uploading the device's local IndexedDB copy — it would back up whatever one device happened to hold, which may be stale or mid-sync, and the thing worth protecting is the canonical state. Restore never hard-deletes: absent notes are soft-deleted through the existing `deleted_at` column and a `pre-restore` snapshot is always taken first, so a restore is itself undoable by two independent routes.
 - **2026-09-12 — Versioned rebuilds over incremental improvement.** Fixes allowed inside a version; features go to the next version's design doc. Rebuilds start from documents, not code. "Drag back to design docs" is a scheduled phase on the roadmap, not a failure.
 
 ---
