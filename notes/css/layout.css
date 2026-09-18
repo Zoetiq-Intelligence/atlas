@@ -45,27 +45,54 @@
 }
 .pane:last-of-type { scroll-snap-align: end; }
 
-.pane-hd {
+/* ---------- the one header ----------
+   Height is summed explicitly from its parts, exactly like --bar-h, so anything that
+   needs to centre on the visible pane area can subtract it instead of measuring —
+   and so the top inset is ADDED to the bar rather than padded out of a fixed height
+   (GUIDE §3.4). It lived in two places when each pane had its own header; a value
+   that has to agree in two places is a value that eventually does not. */
+#topbar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  height: var(--top-h);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: calc(var(--sa-top) + 6px) 10px 6px;
-  min-height: 42px;
-  border-bottom: 1px solid var(--rule);
+  gap: 6px;
+  padding: var(--top-pad) 8px var(--top-pad);
+  padding-top: calc(var(--sa-top) + var(--top-pad));
+  padding-left: calc(var(--sa-left) + 8px);
+  padding-right: calc(var(--sa-right) + 8px);
+  border-bottom: var(--top-border) solid var(--rule);
   background: var(--paper);
+  user-select: none;
+  -webkit-user-select: none;
 }
-.pane-hd .ttl {
-  flex: 1; min-width: 0;
-  font-size: 14px; font-weight: 600; color: var(--ink-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.pane-hd button {
-  width: var(--tap); height: 30px;
+#topbar > button[data-act] {
+  flex: 0 0 auto;
+  width: var(--tap); height: var(--top-row);
   display: grid; place-items: center;
   border-radius: 8px; color: var(--ink-2);
 }
-.pane-hd button:hover { background: var(--chrome); color: var(--ink); }
+#topbar > button[data-act]:hover { background: var(--chrome); color: var(--ink); }
+
+/* The segments carry the pane split, so each title sits above its own pane. */
+#tabs { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; }
+.tab {
+  flex: 1 1 50%;
+  min-width: 0;
+  height: var(--top-row);
+  padding: 0 8px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14px; font-weight: 600;
+  color: var(--ink-3);
+  background: transparent;
+}
+.tab .tt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab:hover { background: var(--chrome); }
+/* Current means "the one New Note will land in", not "the visible one" — on desktop
+   both panes are visible at once. */
+.tab[aria-current="true"] { color: var(--ink); background: var(--chrome); }
 
 /* The scroller is pannable from the edge strips, the peek and the gutter. Inside the
    text a horizontal drag belongs to selection, which is why this is pan-y and not a
@@ -109,8 +136,11 @@
   position: fixed;
   right: var(--sa-right);
   /* Centre on the VISIBLE pane area, not the viewport: with the keyboard up the
-     viewport's midpoint is behind the footer. */
-  top: calc(50% - (var(--kb, 0px) + var(--bar-h)) / 2);
+     viewport's midpoint is behind the footer, and since the header moved out of the
+     panes the area no longer starts at 0. Fixed positioning resolves % against the
+     viewport, so this spans header-bottom to footer-top explicitly rather than
+     measuring anything. */
+  top: calc(var(--top-h) + (100% - var(--top-h) - var(--bar-h) - var(--kb, 0px)) / 2);
   transform: translateY(-50%);
   width: var(--gutter);
   height: 84px;
@@ -123,6 +153,19 @@
   border-right: 0;
   color: var(--ink-3);
   touch-action: pan-x;
+  /* ON PHONE THE GUTTER IS DECORATION ONLY, and that is load-bearing.
+     It is position:fixed, so it lives OUTSIDE the #panes scroller — a horizontal drag
+     landing on it cannot pan the panes no matter what touch-action says, because the
+     nearest scrollable ancestor is the document. Sitting at the right edge, centred on
+     the pane area, it covers exactly the peek: the sliver the thumb is supposed to
+     grab. So it would swallow the swipe at the one spot the swipe is aimed at — the
+     same shape of bug as the 2026-09-17 "can't swipe at all on iPhone".
+     Letting pointers through costs nothing: the edge strip underneath already handles
+     both halves of the job — a tap on a non-current pane goes to that pane, and a drag
+     pans natively because the strip IS inside the scroller. The grip stays visible as
+     the affordance. Desktop turns this back on, where the gutter is a real drag target
+     and the edge strips are display:none. */
+  pointer-events: none;
 }
 #gutter:active { background: var(--accent); color: #fff; }
 #gutter .grip { width: 2px; height: 26px; border-radius: 2px; background: currentColor; box-shadow: 4px 0 0 currentColor; }
@@ -143,6 +186,7 @@
   .pane::after { display: none; }
   .edge { display: none; }
   #gutter {
+    pointer-events: auto;   /* a real drag target here; see the phone rule above */
     position: static;
     transform: none;
     height: auto;
@@ -241,6 +285,11 @@
    GUIDE §3.5 — the keyboard shrinks the visual viewport, not the layout viewport, so
    without this transform a fixed bar sits behind the keyboard. */
 :root {
+  --top-row: 30px;
+  --top-pad: 6px;
+  --top-border: 1px;
+  --top-h: calc(var(--top-row) + var(--top-pad) * 2 + var(--sa-top) + var(--top-border));
+
   --bar-row: 30px;
   --bar-gap: 3px;
   --bar-pad-top: 5px;

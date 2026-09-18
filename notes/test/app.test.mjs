@@ -153,8 +153,8 @@ await p.keyboard.press('Enter');
 await p.keyboard.type('oat milk');
 await p.waitForTimeout(1400);
 ck(await p.locator('.pane:nth-of-type(1) .row').count() === 2, 'two blocks in pane 0');
-const ttl = await p.locator('.pane:nth-of-type(1) .ttl').textContent();
-ck(ttl.trim() === 'Shopping list', 'pane header shows denormalised title, got: ' + ttl);
+const ttl = await p.locator('#tabs .tab[data-pane="0"] .tt').textContent();
+ck(ttl.trim() === 'Shopping list', 'header segment shows the denormalised title, got: ' + ttl);
 
 // --- footer applies a block type -----------------------------------------
 await p.click('#footer .fbtn[data-k="block"][data-v="check"]');
@@ -206,7 +206,7 @@ ck(busySel === true, 'busy while a selection is live — a reload would destroy 
 await p.evaluate(() => getSelection().removeAllRanges());
 
 // --- sidebar --------------------------------------------------------------
-await p.click('.pane:nth-of-type(1) [data-act="list"]');
+await p.click('#topbar [data-act="list"]');
 await p.waitForTimeout(320);
 ck(await p.isVisible('#sidebar'), 'slide-over list opens');
 ck(await p.locator('#folders button').count() >= 2, 'folders rendered from server');
@@ -238,7 +238,7 @@ const rpcWrites = profileHeaders.filter(h => h.m === 'POST');
 ck(rpcWrites.length > 0 && rpcWrites.every(h => h.content === 'notes'),
    'the backup RPCs carry Content-Profile: notes like every other write');
 
-await p.click('.pane:nth-of-type(1) [data-act="list"]');
+await p.click('#topbar [data-act="list"]');
 await p.waitForTimeout(320);
 await p.click('#backups');
 await p.waitForSelector('#backups-panel:not([hidden])', { timeout: 4000 });

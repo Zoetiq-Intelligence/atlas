@@ -49,6 +49,8 @@ ck(await cssVar('--sa-bottom') === 0, 'baseline bottom inset is 0');
 // must be MEASURED, never parsed. This assertion is what found that bug in the app.
 const barBase = (await box('#footer')).height;
 ck(barBase > 60 && barBase < 110, `bar height sane at baseline: ${barBase}`);
+const topBase = (await box('#topbar')).height;
+ck(topBase > 20 && topBase < 70, `header height sane at baseline: ${topBase}`);
 
 // ---- GUIDE §3.1 — drive the INSTALLED configuration off-device -------------
 // 59pt top / 34pt bottom is the measured notched-phone standalone case.
@@ -68,8 +70,22 @@ const lastRow = await rows[rows.length - 1].boundingBox();
 ck(lastRow.y + lastRow.height <= footer.y + footer.height - 34 + 1.5,
    'footer controls sit above the home-indicator reserve, not inside it');
 
-const paneHd = await box('.pane-hd');
-ck(paneHd.height >= 59, `pane header absorbs the top inset: ${paneHd.height}`);
+// GUIDE §3.4 at the TOP edge, which had no guard while each pane carried its own
+// header — the old assertion was `>= 59`, which a fixed 60px bar passes while
+// swallowing the inset whole. One header means one place this can be wrong.
+const topInset = (await box('#topbar')).height;
+ck(Math.abs((topInset - topBase) - 59) < 1.5,
+   `header grew by exactly the top inset: ${topBase} -> ${topInset} (expected +59)`);
+
+// The panes must start BELOW the header, or the first line of text sits under it.
+const topBox = await box('#topbar');
+const paneBox = await box('.pane');
+ck(paneBox.y >= topBox.y + topBox.height - 1.5,
+   `panes begin below the header (${paneBox.y} vs ${topBox.y + topBox.height})`);
+
+// One header, not two. This is the whole point of the change.
+ck(await p.locator('#topbar').count() === 1, 'exactly one header exists');
+ck(await p.locator('.pane-hd').count() === 0, 'no per-pane headers remain');
 
 // GUIDE §2.3 — nothing may be laid out below the layout viewport.
 const overflow = await p.evaluate(() =>
@@ -147,6 +163,15 @@ const hit = await p.evaluate(() => {
            isEdge: !!edge, touchAction: getComputedStyle(el).touchAction };
 });
 ck(hit && hit.isEdge, `the peek region hit-tests to a pannable edge strip, got: ${JSON.stringify(hit)}`);
+
+// CAUSE 3: the gutter is position:fixed, so it is OUTSIDE the #panes scroller and a
+// drag on it can never pan the panes. Centred on the pane area at the right edge, it
+// covers the peek exactly. It must therefore let pointers through on phone, or it
+// eats the swipe at the one place the swipe is aimed. Regression guard: this was
+// introduced the moment the header moved out of the panes and the gutter's centre
+// shifted down onto the midpoint the thumb uses.
+const gutterPE = await p.evaluate(() => getComputedStyle(document.getElementById('gutter')).pointerEvents);
+ck(gutterPE === 'none', `the phone gutter is decoration only, got pointer-events: ${gutterPE}`);
 ck(hit && hit.touchAction === 'pan-x', `that strip is pan-x so the drag pans the scroller (got ${hit && hit.touchAction})`);
 
 // And the switch actually moves the scroller.
@@ -173,7 +198,7 @@ if (snapped[0] !== null) {
 
 // ---- GUIDE §9 — the device truth kit is reachable and honest ---------------
 // The build id lives in the slide-over, so it can never be tapped by accident.
-await p.locator('.pane-hd [data-act="list"]').first().click();
+await p.locator('#topbar [data-act="list"]').first().click();
 await p.waitForSelector('#sidebar.open', { timeout: 4000 });
 await p.waitForTimeout(260);
 for (let i = 0; i < 5; i++) await p.click('#build');

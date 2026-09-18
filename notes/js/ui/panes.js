@@ -31,7 +31,7 @@ function stopLabel(f) {
   return Math.round(f * 100) + '%';
 }
 
-export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
+export function createPanes(scroller, gutter, { onActive = () => {}, onSplit = () => {} } = {}) {
   const panes = [...scroller.querySelectorAll('.pane')];
   let active = 0;
 
@@ -81,6 +81,7 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
     panes[1].style.flex = '1 1 auto';
     gutter.setAttribute('aria-valuetext', stopLabel(snapped));
     gutter.dataset.stop = stopLabel(snapped);
+    onSplit(snapped);          // the header segments follow the divider live
   });
   const endDrag = e => {
     if (window.UPDATE) window.UPDATE.__dragging = false;
@@ -89,6 +90,10 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
   gutter.addEventListener('pointerup', endDrag);
   gutter.addEventListener('pointercancel', endDrag);
 
+  // Kept, but inert on phone: the CSS gives #gutter pointer-events:none below 820px
+  // because a fixed element sitting over the peek would swallow the swipe it cannot
+  // perform (see the rule in layout.css). The edge strip underneath does the tap.
+  // This stays so the behaviour returns the moment the gutter is a hit target again.
   gutter.addEventListener('click', () => { if (!wide()) goTo(active === 0 ? 1 : 0); });
 
   // ---- edge strips: a horizontal drag here pans the scroller natively ----
@@ -116,8 +121,10 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
   }
 
   window.addEventListener('resize', () => {
-    if (wide()) { panes.forEach(p => (p.style.flex = '')); }
-    else goTo(active, false);
+    if (wide()) { panes.forEach(p => (p.style.flex = '')); onSplit(0.5); }
+    // On a phone only one pane is on screen, so there is no split for the header to
+    // mirror — null hands the segments back to CSS, which shares the bar evenly.
+    else { goTo(active, false); onSplit(null); }
   });
 
   return {
@@ -127,12 +134,12 @@ export function createPanes(scroller, gutter, { onActive = () => {} } = {}) {
       const f = nearestStop(fraction);
       panes[0].style.flex = `0 0 ${(f * 100).toFixed(4)}%`;
       panes[1].style.flex = '1 1 auto';
+      onSplit(f);
       return f;
     },
     active: () => active,
     pane: i => panes[i],
     editor: i => panes[i].querySelector('.editor'),
-    header: i => panes[i].querySelector('.pane-hd .ttl'),
     isWide: wide,
   };
 }

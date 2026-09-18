@@ -10,6 +10,7 @@ import { createEditor } from './editor/input.js';
 import { createPanes } from './ui/panes.js';
 import { createFooter } from './ui/footer.js';
 import { createSidebar } from './ui/sidebar.js';
+import { createTopbar } from './ui/topbar.js';
 import * as layout from './ui/layout.js';
 import { mount as mountDiag } from './ui/diag.js';
 import { mount as mountBackups } from './ui/backups.js';
@@ -23,7 +24,7 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
       return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     }));
 
-let panes, footer, sidebar;
+let panes, footer, sidebar, topbar;
 let editors = [];
 let openIds = [null, null];
 let focused = 0;
@@ -111,12 +112,22 @@ async function startApp() {
   $('#gate').hidden = true;
   $('#app').hidden = false;
 
-  panes = createPanes($('#panes'), $('#gutter'), { onActive: i => { focused = i; footer.sync(); } });
+  topbar = createTopbar($('#topbar'), {
+    onList: () => sidebar.toggle(),
+    onNew: pane => newNote(null, pane),       // lands in whichever segment is current
+    onPane: i => { panes.goTo(i); setFocus(i); },
+  });
+
+  panes = createPanes($('#panes'), $('#gutter'), {
+    onActive: i => setFocus(i),
+    onSplit: f => topbar.setSplit(panes.isWide() ? f : null),
+  });
+  topbar.setSplit(panes.isWide() ? 0.5 : null);
   window.__panes__ = panes;   // test surface: assert the divider's snap stops
 
   editors = [0, 1].map(i => createEditor(panes.editor(i), {
     onChange: (doc, title) => persist(i, doc, title),
-    onFocus: () => { focused = i; footer.sync(); },
+    onFocus: () => setFocus(i),
   }));
 
   footer = createFooter($('#footer'), () => editors[focused]);
@@ -127,8 +138,6 @@ async function startApp() {
     onNewFolder: name => newFolder(name),
   });
 
-  for (const b of document.querySelectorAll('[data-act="list"]')) b.onclick = () => sidebar.toggle();
-  for (const b of document.querySelectorAll('[data-act="new"]')) b.onclick = () => newNote(null);
   $('#signout').onclick = async () => { await auth.signOut(); location.reload(); };
 
   sync.onState(s => { $('#pip').dataset.s = s; });
@@ -183,9 +192,18 @@ async function startApp() {
   // immediately rather than after the user finds the second pane
   if (notes[0]) await openInto(0, notes[0].id); else await newNote(null, 0);
   if (notes[1]) await openInto(1, notes[1].id); else await newNote(null, 1);
-  focused = 0;
+  setFocus(0);          // header's current segment must agree with the caret
   editors[0].focus();
   sync.flush();
+}
+
+// The focused pane is what the header's "current" segment marks and what New Note
+// acts on, so every route that changes it goes through here rather than assigning
+// `focused` in four places that can drift.
+function setFocus(i) {
+  focused = i;
+  topbar.setActive(i);
+  if (footer) footer.sync();
 }
 
 // After a restore every note may have changed, both panes may be showing a note that
@@ -234,7 +252,7 @@ async function openInto(i, id) {
   if (!n) return;
   openIds[i] = id;
   editors[i].load(id, coerce(n.doc));
-  panes.header(i).textContent = n.title || 'New Note';
+  topbar.setTitle(i, n.title);
   sidebar.current(openIds[focused]);
   footer.sync();
 }
@@ -295,7 +313,7 @@ let saveTimers = [null, null];
 function persist(i, doc, title) {
   const id = openIds[i];
   if (!id) return;
-  panes.header(i).textContent = title || 'New Note';
+  topbar.setTitle(i, title);
   clearTimeout(saveTimers[i]);
   savePending[i] = true;
   saveTimers[i] = setTimeout(async () => {
@@ -307,7 +325,7 @@ function persist(i, doc, title) {
     await sync.saveLocal(n);
     // the other pane may be showing the same note
     const other = i === 0 ? 1 : 0;
-    if (openIds[other] === id) panes.header(other).textContent = title || 'New Note';
+    if (openIds[other] === id) topbar.setTitle(other, title);
     notes = await sync.localNotes();
     sidebar.set(notes, folders, openIds[focused]);
   }, 400);

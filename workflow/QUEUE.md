@@ -12,6 +12,7 @@
 |---|---|---|---|
 | 0 | **Backups every 6h + revert** | **built 2026-09-18; needs the SQL run** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
 | 1 | **Live sync, sub-1s** | designed, researched, **not built** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
+| 1b | **One SPA header** | **built 2026-09-18** | Replaced both per-pane headers. Title segments are sized to the divider's fraction so each sits above its pane, and double as the pane switcher; list / sync / new note are global and live there once. |
 | 2 | **Search** — "within note that's open, and then global" | not started | Only the sidebar filters today, client-side. |
 | 3 | **Drag-and-drop line reordering** — "in a way that is fast on phone" | not started | |
 | 4 | **Footer restructure** | not started | "every single thing that we can do should be in the footer somehow, minimize the number of layers and always indicate on a button how many things are within it in a subtle way somehow". Plus new styles, plus deciding what is static and what scrolls. |
@@ -21,6 +22,58 @@
 | 8 | **150ms smootherstep transitions everywhere** | not started | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
 
 ---
+
+## ⚠ 2026-09-18 — items 4, 5, 6 and 7 are ONE feature, not four
+
+Operator, verbatim:
+
+> what im not seeing is the three-way parity between footer buttons, selection menu
+> (not right click; just when we select), and hotkeys (shown as instant tooltips in the
+> footer) for EVERY function we can do to control inputs.
+
+This is a scope ruling, and it changes the architecture rather than the backlog order.
+Footer buttons, the selection menu and the keymap are three **surfaces over one command
+registry** — not three features that happen to overlap. Every input-control command is
+declared once with its id, label, icon, key, and applicability predicate; each surface
+renders from that list. Parity then holds *by construction*, and the failure mode being
+complained about — a thing you can do in one place and not another — becomes
+unrepresentable rather than a thing to keep checking.
+
+Consequences worth stating before it is built:
+
+- The footer tooltip shows the command's key, so the keymap documents itself and item 7
+  (instant tooltips) is a property of the registry rather than separate work.
+- The selection menu is **selection-triggered, not right-click** — it appears when text
+  is selected. Item 6's ruling still holds for the *context* menu (suppress the native
+  one on Windows, supplement on iOS); this is a different surface from that one.
+- A command with no key still appears in all three surfaces; a key with no command is a
+  build error the registry can catch.
+- "EVERY function we can do to control inputs" is the acceptance test, so the registry
+  needs a completeness assertion, not a spot check.
+
+## Item 9 — drawings, v1, three takes A/B/C
+
+Asked 2026-09-18: *"can we put in a V1 of being able to insert drawings? I want 3
+different takes that I can A/B/C test inline (without breakign the rest of the app/notes
+data!) and then we will iterate."*
+
+**⚠ BLOCKER, found before any code: the document model currently destroys what it does
+not recognise.** `doc.js coerce()` does two things that make a drawing block unsafe today:
+
+1. `.filter(b => b && typeof b.text === 'string')` — a block with no `text` is **dropped**.
+2. It rebuilds each block from a fixed field list, so **any field it does not know about
+   is discarded**, and an unknown `t` is rewritten to `'p'`.
+
+So a drawing inserted today would survive only until any build opened the note — including
+the current one. **Forward-compatibility must land, deploy, and reach BOTH devices before
+the first drawing block is ever created**, or a device still running an older build will
+silently strip drawings out of notes it syncs. That makes the stale-build problem a data
+hazard, not a cosmetic one.
+
+Plan: one `draw` block type carrying `{variant: 'a'|'b'|'c', data}`, so all three takes
+share a single schema and A/B/C is a per-drawing choice, inline, with no branching in the
+storage layer. Proposed takes — raster canvas, vector stroke list, pressure-width ribbon —
+to be confirmed when the work starts.
 
 ## Item 5 — the Spacebar scheme, as proposed and accepted in principle
 

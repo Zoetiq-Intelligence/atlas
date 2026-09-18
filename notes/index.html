@@ -84,7 +84,6 @@
     <div class="sb-hd">
       <div class="row1">
         <h1>Notes</h1>
-        <span id="pip" title="Sync"></span>
         <button id="new" class="icon" type="button" aria-label="New note"></button>
       </div>
       <input id="search" type="search" placeholder="Search" autocomplete="off">
@@ -102,13 +101,22 @@
     </div>
   </aside>
 
+  <!-- ONE header for both panes and everything global. The title segments are sized
+       to the same fraction the divider snaps to, so each sits above the pane it
+       names; tapping the other one switches panes. "New note" acts on whichever
+       segment is aria-current, which is why the focus has to be visible here. -->
+  <header id="topbar">
+    <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
+    <div id="tabs" role="group" aria-label="Open notes">
+      <button type="button" class="tab" data-pane="0" aria-current="true"><span class="tt">New Note</span></button>
+      <button type="button" class="tab" data-pane="1"><span class="tt">New Note</span></button>
+    </div>
+    <span id="pip" title="Sync"></span>
+    <button type="button" data-act="new" aria-label="New note">&#43;</button>
+  </header>
+
   <main id="panes">
     <section class="pane">
-      <header class="pane-hd">
-        <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
-        <span class="ttl">&nbsp;</span>
-        <button type="button" data-act="new" aria-label="New note">&#43;</button>
-      </header>
       <div class="editor"></div>
       <div class="edge edge-l"></div>
       <div class="edge edge-r"></div>
@@ -117,11 +125,6 @@
     <div id="gutter" role="separator" aria-label="Switch pane"><span class="grip"></span></div>
 
     <section class="pane">
-      <header class="pane-hd">
-        <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
-        <span class="ttl">&nbsp;</span>
-        <button type="button" data-act="new" aria-label="New note">&#43;</button>
-      </header>
       <div class="editor"></div>
       <div class="edge edge-l"></div>
       <div class="edge edge-r"></div>
