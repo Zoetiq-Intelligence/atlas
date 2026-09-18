@@ -225,16 +225,38 @@ async function openInto(i, id) {
 // store is clean. So the guard reads false at the moment the user is most engaged.
 // DOM-only state counts too: a gutter drag exists only as a pointer capture.
 // ===========================================================================
-let pendingSaves = 0;
+// A COUNTER IS THE WRONG SHAPE HERE. Every keystroke calls persist(), which clears the
+// previous debounce timer and sets a new one — so N keystrokes incremented N times but
+// only the LAST timer ever fired and decremented once. The counter leaked upward and
+// never returned to zero, which is the second reason busy() was permanently true.
+// One flag per pane: set when a save is scheduled, cleared when it completes.
+const savePending = [false, false];
 let dragging = false;
 
+// ⚠ REGRESSION FIXED 2026-09-17, and it is the exact failure GUIDE §7.4 warns about.
+// The first version counted "the caret is inside a .txt" as busy. In a NOTES APP the
+// editor is focused from boot — startApp() focuses it deliberately — so busy() was
+// true forever, the idle gate never opened, the handover never fired, and THE APP
+// COULD NEVER UPDATE ITSELF. Symptom: a fix is provably live on the server and a hard
+// refresh does not bring it, because the precache-first worker keeps serving the old
+// build and nothing ever tells it to step aside.
+//
+// The rule in §7.4 is "enumerate what a reload would destroy". A caret POSITION is
+// cheap and is destroyed by any reload anyway. What is expensive is an edit that has
+// not reached storage yet, a gesture in flight, and a selection being made. Write the
+// predicate from THOSE.
+let lastKeystroke = 0;
+const TYPING_GRACE_MS = 1500;
+document.addEventListener('input', () => { lastKeystroke = Date.now(); }, true);
+
 function isBusy() {
-  if (pendingSaves > 0) return true;                       // an edit is mid-debounce
+  if (savePending.some(Boolean)) return true;                   // an edit has not reached storage
   if (dragging || (window.UPDATE && window.UPDATE.__dragging)) return true;  // DOM-only gesture
-  if (document.activeElement && document.activeElement.closest &&
-      document.activeElement.closest('.txt')) return true; // caret is in the text
+  if (Date.now() - lastKeystroke < TYPING_GRACE_MS) return true; // mid-sentence
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount && !sel.isCollapsed) return true;    // a selection being made
   const s = document.getElementById('search');
-  if (s && s.value.trim()) return true;                    // a search they would lose
+  if (s && s.value.trim()) return true;                          // a search they would lose
   return false;
 }
 
@@ -253,9 +275,9 @@ function persist(i, doc, title) {
   if (!id) return;
   panes.header(i).textContent = title || 'New Note';
   clearTimeout(saveTimers[i]);
-  pendingSaves++;
+  savePending[i] = true;
   saveTimers[i] = setTimeout(async () => {
-    pendingSaves = Math.max(0, pendingSaves - 1);
+    savePending[i] = false;
     const n = await get(NOTES, id);
     if (!n) return;
     n.doc = doc;

@@ -132,6 +132,35 @@ const writes = profileHeaders.filter(h => h.m !== 'GET');
 ck(reads.length > 0 && reads.every(h => h.accept === 'notes'), 'every read sends Accept-Profile: notes');
 ck(writes.length > 0 && writes.every(h => h.content === 'notes'), 'every write sends Content-Profile: notes');
 
+// --- the idle gate must actually open ---------------------------------------
+// REGRESSION GUARD. The first isBusy() counted "caret is inside the editor" as busy.
+// A notes app focuses its editor at boot, so busy() was true forever, the handover
+// never fired, and the app could never update itself — a fix would be live on the
+// server and never reach the device. An app that can never report itself idle can
+// never take a new build.
+await p.evaluate(() => { document.activeElement && document.activeElement.blur && document.activeElement.blur(); });
+await p.click('.pane:nth-of-type(1) .editor .txt');       // caret deliberately IN the text
+await p.waitForTimeout(1700);                              // past the typing grace window
+const busyWithCaret = await p.evaluate(() => window.UPDATE && window.UPDATE.isBusy());
+ck(busyWithCaret === false, `idle with the caret parked in the editor (got ${busyWithCaret})`);
+
+await p.keyboard.type('x');
+const busyTyping = await p.evaluate(() => window.UPDATE.isBusy());
+ck(busyTyping === true, 'busy immediately after a keystroke — never reload mid-sentence');
+
+await p.waitForTimeout(1800);
+const busyAfter = await p.evaluate(() => window.UPDATE.isBusy());
+ck(busyAfter === false, `idle again once typing stops (got ${busyAfter})`);
+
+await p.evaluate(() => {
+  const t = document.querySelector('.row .txt');
+  const r = document.createRange(); r.selectNodeContents(t);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+});
+const busySel = await p.evaluate(() => window.UPDATE.isBusy());
+ck(busySel === true, 'busy while a selection is live — a reload would destroy it');
+await p.evaluate(() => getSelection().removeAllRanges());
+
 // --- sidebar --------------------------------------------------------------
 await p.click('.pane:nth-of-type(1) [data-act="list"]');
 await p.waitForTimeout(320);

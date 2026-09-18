@@ -105,15 +105,23 @@
   // reloading. Never setInterval: in a test harness that keeps the process alive.
   // ===========================================================================
   var pollTimer = null, looping = false, handoverAsked = false, reloaded = false;
+  var waitingSince = 0;
+  var STALE_MS = 5 * 60 * 1000;   // after this long, hidden beats busy
 
   function goodMoment() {
-    if (document.visibilityState === 'hidden' && !busy()) return true;
-    if (!busy() && !onPrimarySurface()) return true;
-    return false;
+    var hidden = document.visibilityState === 'hidden';
+    if (hidden && !busy()) return true;                     // (1) free: no state, no flash
+    if (!busy() && !onPrimarySurface()) return true;        // (2) acceptable
+    // Safety valve. GUIDE §7.6 says wait indefinitely, and that is right while someone
+    // is looking. But an update waiting against a busy() that never clears is an update
+    // that is never arriving, and a stuck build is worse than a reload nobody sees.
+    if (hidden && waitingSince && (Date.now() - waitingSince) > STALE_MS) return true;
+    return false;                                           // (3) never
   }
 
   function reloadWhenIdle() {
     signalAvailable(true);                 // §7.7 — inform immediately, interrupt later
+    if (!waitingSince) waitingSince = Date.now();
     if (looping) return;
     looping = true;
     tick();
