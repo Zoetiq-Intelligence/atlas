@@ -287,13 +287,34 @@ for each row execute function notes.broadcast_note_change();
 
 Then join with `config.private: true` and listen for `broadcast` events named `INSERT`/`UPDATE`/`DELETE`.
 
-**⚠ UNVERIFIED — argument order of `realtime.send`.** The docs page shows `realtime.send(payload jsonb, event text, topic text, private boolean)`; Supabase's own official prompt file `examples/prompts/use-realtime.md` shows the calls as `realtime.send(topic, event, payload, false)`. **These contradict each other.** I could not reach the function's SQL definition (the `supabase/realtime` repo's migrations weren't fetchable from here). The docs page is the more likely correct one and is what I used above, but **confirm on your project before relying on it**:
-```sql
-select pg_get_function_arguments(oid) from pg_proc
- where proname in ('send','broadcast_changes') and pronamespace = 'realtime'::regnamespace;
+**✅ VERIFIED 2026-09-18 — argument order of `realtime.send`.** Resolved on our own project
+(`ymcewqdxtfxskyuizlqx`) by the operator running `pg_get_function_arguments` against
+`pg_proc`. Exact output:
+
+```
+realtime.send(payload jsonb, event text, topic text, private boolean DEFAULT true)
+realtime.broadcast_changes(topic_name text, event_name text, operation text,
+                           table_name text, table_schema text,
+                           new record, old record, level text DEFAULT 'ROW'::text)
 ```
 
-**⚠ UNVERIFIED — payload shape of `realtime.broadcast_changes`.** Its argument list is documented (`topic, event, operation, table, schema, NEW, OLD`) but **no Supabase page shows the resulting JSON the client receives**. I checked the protocol spec, the broadcast guide, the subscribing-to-changes guide, the launch blog and the DEV crosspost — none of them print it. The widely-observed shape is `{operation, record, old_record, schema, table}` under `payload`, but I am not asserting that. Using `realtime.send` with a `jsonb_build_object` you wrote yourself sidesteps this entirely, which is another reason I recommend it.
+**The docs page was right and Supabase's own prompt file `examples/prompts/use-realtime.md`
+is wrong** — it shows `realtime.send(topic, event, payload, false)`, which is the reverse.
+The trigger function above already uses the verified order, so **the code in this document
+is correct as written and needs no change.** ⚠ If you ever copy a `realtime.send` call from
+a Supabase example, check the order before trusting it — both arguments 1 and 3 accept a
+value without erroring in some cases, so getting it backwards fails silently rather than
+loudly.
+
+Two things the signature confirms that were previously only asserted:
+
+- **`private` defaults to `true`.** Corroborates the public/private matching note below —
+  a database broadcast is private unless you say otherwise, so the client must join with
+  `config.private: true` or it hears nothing, with no error.
+- **`broadcast_changes` takes a `level` argument (`'ROW'` default)** that no Supabase page
+  we read mentions. Not needed for our design, recorded so nobody re-derives it.
+
+**⚠ STILL UNVERIFIED — payload shape of `realtime.broadcast_changes`.** Its argument list is now confirmed from `pg_proc` (see above; note it also carries an undocumented `level`) but **no Supabase page shows the resulting JSON the client receives**. I checked the protocol spec, the broadcast guide, the subscribing-to-changes guide, the launch blog and the DEV crosspost — none of them print it. The widely-observed shape is `{operation, record, old_record, schema, table}` under `payload`, but I am not asserting that. Using `realtime.send` with a `jsonb_build_object` you wrote yourself sidesteps this entirely, which is another reason I recommend it.
 
 Other broadcast facts worth knowing:
 - **Public/private must match.** *"A public broadcast only reaches public channels and a private broadcast only reaches private channels."* Database broadcasts default to **private**. A mismatch = total silence, no error.
