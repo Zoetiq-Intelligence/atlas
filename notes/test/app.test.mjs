@@ -245,9 +245,9 @@ await p.setViewportSize({ width: 1280, height: 820 });
 await p.waitForTimeout(250);
 await p.click('.pane:nth-of-type(2) .editor .txt');     // focus pane 1
 await p.waitForTimeout(150);
-await p.click('#topbar [data-act="list"]');             // then open the list
+await p.click('#topbar .tabmenu[data-pane="1"]');       // the RIGHT pane's own list
 await p.waitForTimeout(320);
-await p.locator('.nrow').first().click();               // opens into the focused pane
+await p.locator('.nrow .nmain').first().click();        // opens into that pane
 await p.waitForTimeout(450);
 
 const titlesBefore = await p.evaluate(() => [...document.querySelectorAll('.tab .tt')].map(e => e.textContent));
@@ -265,6 +265,173 @@ ck(pane1Text.includes('MIRRORED'),
 
 await p.setViewportSize({ width: 390, height: 844 });
 await p.waitForTimeout(250);
+
+// --- THREE-WAY PARITY -------------------------------------------------------
+// "EVERY function for content gets keyboard shortcuts, selection menu, and footer
+// buttons. EVERY single one." This is the acceptance test for that sentence, and the
+// red-highlight rule is its in-app twin: anything short of all three must LOOK
+// unfinished without anyone running this file.
+await p.click('.pane:nth-of-type(1) .editor .txt');
+await p.waitForTimeout(150);
+
+const parity = await p.evaluate(() => (window.__PARITY__ || []).map(r => ({
+  id: r.cmd.id, key: r.cmd.key, footer: r.footer, menu: r.menu, hasKey: r.key,
+  impl: r.impl, ok: r.ok, missing: r.missing,
+})));
+ck(parity.length >= 20, `every command is audited, got ${parity.length}`);
+const broken = parity.filter(r => !r.ok);
+ck(broken.length === 0,
+   'every command has footer + selection menu + shortcut + implementation; missing: '
+   + JSON.stringify(broken.map(b => b.id + ':' + b.missing.join('/'))));
+
+// Each surface really renders them all — audited against the DOM, not a list.
+const nFooter = await p.locator('#footer .fbtn').count();
+const nMenu = await p.locator('#selmenu .selbtn').count();
+ck(nFooter === parity.length, `the footer renders every command (${nFooter}/${parity.length})`);
+ck(nMenu === parity.length, `the selection menu renders every command (${nMenu}/${parity.length})`);
+
+// No key collisions: two commands on one chord means one of them is unreachable.
+const keys = parity.map(r => r.key);
+ck(new Set(keys).size === keys.length, 'no two commands share a shortcut: ' + keys.join(''));
+
+// The tooltip must PRINT the shortcut — that is how the keymap documents itself.
+const lbl = await p.locator('#footer .fbtn[data-id="bold"]').getAttribute('aria-label');
+ck(/Space A/i.test(lbl || ''), 'the footer button announces its shortcut, got: ' + lbl);
+ck(await p.locator('#footer .fbtn[data-id="bold"]').getAttribute('title') === null,
+   'the native title is removed, or it appears a second later under ours');
+
+// Instant, with no hover delay: the tooltip is on screen on the very next frame.
+await p.locator('#footer .fbtn[data-id="bold"]').hover();
+await p.waitForTimeout(60);
+ck(await p.locator('#tip').isVisible(), 'the tooltip shows immediately on hover');
+const tipText = await p.locator('#tip').textContent();
+ck(/Bold/.test(tipText) && /Space A/i.test(tipText), 'the tooltip names the command and its key: ' + tipText);
+
+// The red highlight has to actually be reachable, or the rule is decorative. Force a
+// gap and confirm the button paints as unfinished.
+const marked = await p.evaluate(async () => {
+  const mod = await import('./js/editor/commands.js');
+  const cmd = mod.COMMANDS.find(c => c.id === 'quote');
+  const realKey = cmd.key;
+  cmd.key = '';                                   // simulate a command with no shortcut
+  mod.markParity(document.querySelector('#footer'), document.querySelector('#selmenu'));
+  const el = document.querySelector('#footer .fbtn[data-id="quote"]');
+  const out = { cls: el.classList.contains('incomplete'), missing: el.dataset.missing,
+                shadow: getComputedStyle(el).boxShadow };
+  cmd.key = realKey;                              // put it back
+  mod.markParity(document.querySelector('#footer'), document.querySelector('#selmenu'));
+  out.restored = !document.querySelector('#footer .fbtn[data-id="quote"]').classList.contains('incomplete');
+  return out;
+});
+ck(marked.cls, 'a command missing a surface is marked incomplete');
+ck(/shortcut/.test(marked.missing || ''), 'and says what it is missing: ' + marked.missing);
+ck(/rgb/.test(marked.shadow) && marked.shadow !== 'none',
+   'the incomplete mark is a visible highlight, got: ' + marked.shadow);
+ck(marked.restored, 'and it clears again once parity is restored');
+
+// --- the selection menu appears on SELECTION, not right-click ---------------
+await p.click('.pane:nth-of-type(1) .editor .txt');
+await p.keyboard.press('End');
+await p.evaluate(() => {
+  const t = document.querySelector('.pane .editor .txt');
+  const r = document.createRange();
+  r.selectNodeContents(t);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  document.dispatchEvent(new Event('selectionchange'));
+});
+await p.waitForTimeout(300);
+ck(await p.locator('#selmenu').isVisible(), 'selecting text raises the selection menu');
+await p.evaluate(() => { getSelection().removeAllRanges(); document.dispatchEvent(new Event('selectionchange')); });
+await p.waitForTimeout(250);
+ck(await p.locator('#selmenu').isHidden(), 'and it goes away when the selection does');
+
+// --- the Space chord --------------------------------------------------------
+// Space is a printing character, so the whole design question is how a chord can
+// exist without ever eating a space someone meant to type. Both halves are asserted:
+// a deliberate hold fires the command, a fast overlap does not.
+await p.click('.pane:nth-of-type(1) .editor .txt');
+await p.keyboard.press('End');
+await p.evaluate(() => {
+  const t = document.querySelector('.pane .editor .txt');
+  const r = document.createRange(); r.selectNodeContents(t);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+});
+await p.waitForTimeout(120);
+await p.keyboard.down(' ');
+await p.waitForTimeout(160);                 // past the 90ms dwell
+await p.keyboard.press('a');                 // asdf row, position 1 = Bold
+await p.keyboard.up(' ');
+await p.waitForTimeout(300);
+const boldOn = await p.getAttribute('#footer .fbtn[data-id="bold"]', 'aria-pressed');
+ck(boldOn === 'true', `Space+A applies Bold, footer says aria-pressed=${boldOn}`);
+
+// The other half: too fast to be a chord, so BOTH characters must type.
+const beforeFast = await p.locator('.pane:nth-of-type(1) .editor .txt').first().innerText();
+await p.evaluate(() => { const s = getSelection(); s.removeAllRanges(); });
+await p.click('.pane:nth-of-type(1) .editor .txt');
+await p.keyboard.press('End');
+await p.keyboard.down(' ');
+await p.keyboard.press('q');                 // would be Bulleted if it chorded
+await p.keyboard.up(' ');
+await p.waitForTimeout(300);
+const afterFast = await p.locator('.pane:nth-of-type(1) .editor .txt').first().innerText();
+ck(afterFast.length > beforeFast.length,
+   `a fast space+key types instead of chording (${JSON.stringify(beforeFast.slice(-12))} -> ${JSON.stringify(afterFast.slice(-12))})`);
+
+// --- naming the destination pane -------------------------------------------
+// "not one that relies on what we clicked into last" — every route into a note now
+// names the pane it fills, so the same gesture means the same thing every time.
+await p.setViewportSize({ width: 1280, height: 820 });
+await p.waitForTimeout(250);
+
+ck(await p.locator('#topbar .tabmenu').count() === 2, 'desktop has a list button per pane');
+ck(await p.locator('#topbar .tabmenu[data-pane="1"]').isVisible(), 'the right pane has its own list button');
+ck(await p.isHidden('#topbar > [data-act="list"]'), 'the single phone list button is not shown on desktop');
+
+// open the RIGHT pane's list and tap a title: it must land on the right, regardless
+// of which pane was touched last.
+await p.click('.pane:nth-of-type(1) .editor .txt');       // focus the LEFT pane first
+await p.waitForTimeout(150);
+await p.click('#topbar .tabmenu[data-pane="1"]');
+await p.waitForTimeout(320);
+ck((await p.locator('#dest').textContent()).includes('right'),
+   'the list says which pane it will fill');
+const rowTitle = (await p.locator('.nrow .t').first().textContent()).replace(/^★ /, '');
+await p.locator('.nrow .nmain').first().click();
+await p.waitForTimeout(420);
+const rightTab = await p.locator('.tab[data-pane="1"] .tt').textContent();
+ck(rightTab === rowTitle,
+   `a title tapped in the right list opens on the RIGHT (${JSON.stringify(rightTab)} vs ${JSON.stringify(rowTitle)})`);
+
+// the per-row buttons override whatever list you are in
+await p.click('#topbar .tabmenu[data-pane="1"]');
+await p.waitForTimeout(320);
+ck(await p.locator('.nrow').first().locator('.nsend').count() === 2,
+   'every row carries both destinations');
+const rowTitle2 = (await p.locator('.nrow .t').first().textContent()).replace(/^★ /, '');
+await p.locator('.nrow').first().locator('.nsend[data-pane="0"]').click();
+await p.waitForTimeout(420);
+const leftTab = await p.locator('.tab[data-pane="0"] .tt').textContent();
+ck(leftTab === rowTitle2,
+   `the left button wins over the list's own pane (${JSON.stringify(leftTab)} vs ${JSON.stringify(rowTitle2)})`);
+
+// --- swiping a row ---------------------------------------------------------
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(250);
+await p.click('#topbar > [data-act="list"]');
+await p.waitForTimeout(320);
+const swipeRow = p.locator('.nrow').first();
+const swipeTitle = (await swipeRow.locator('.t').textContent()).replace(/^★ /, '');
+const rb = await swipeRow.boundingBox();
+await p.mouse.move(rb.x + 40, rb.y + rb.height / 2);
+await p.mouse.down();
+// past the 56px threshold, in steps so the handler sees a drag rather than a jump
+for (let x = 50; x <= 130; x += 20) { await p.mouse.move(rb.x + x, rb.y + rb.height / 2); await p.waitForTimeout(20); }
+await p.mouse.up();
+await p.waitForTimeout(500);
+const swiped = await p.locator('.tab[data-pane="1"] .tt').textContent();
+ck(swiped === swipeTitle,
+   `swiping a row right sends it to the right pane (${JSON.stringify(swiped)} vs ${JSON.stringify(swipeTitle)})`);
 
 // --- backups ---------------------------------------------------------------
 // The operator's requirement: a snapshot whenever an instance is on and six hours

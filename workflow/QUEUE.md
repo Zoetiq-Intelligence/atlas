@@ -17,10 +17,10 @@
 | 1d | **A visible app now pulls** | **fixed 2026-09-18** | `pull()` ran only on foreground/`online`, and the 20s interval flushed writes without ever reading. Two devices both open never saw each other. Now polls at 5s AND reports which ids changed, because writing to IndexedDB is not the same as reaching the screen — nothing re-read the store. This is the floor under live sync, not a substitute for it. |
 | 2 | **Search** — "within note that's open, and then global" | not started | Only the sidebar filters today, client-side. |
 | 3 | **Drag-and-drop line reordering** — "in a way that is fast on phone" | not started | |
-| 4 | **Footer restructure** | not started | "every single thing that we can do should be in the footer somehow, minimize the number of layers and always indicate on a button how many things are within it in a subtle way somehow". Plus new styles, plus deciding what is static and what scrolls. |
-| 5 | **Hotkeys, Spacebar as modifier** | designed, accepted in principle | Key groups: `1234` `qwer` `asdf` `zxcv` `5tgb`. Proposal below. |
+| 4 | **Footer restructure** | **built 2026-09-19** | "every single thing that we can do should be in the footer somehow, minimize the number of layers and always indicate on a button how many things are within it in a subtle way somehow". Plus new styles, plus deciding what is static and what scrolls. |
+| 5 | **Hotkeys, Spacebar as modifier** | **built 2026-09-19** (hold-chord; latched mode NOT built) | Key groups: `1234` `qwer` `asdf` `zxcv` `5tgb`. Proposal below. |
 | 6 | **Custom context menu** | ruled, not built | **Windows: suppress the native menu.** **iOS: supplement rather than replace, spaced to avoid colliding with the system callout.** |
-| 7 | **Tooltips on every button, instant** | not started | No hover delay. |
+| 7 | **Tooltips on every button, instant** | **built 2026-09-19** | No hover delay. |
 | 8 | **150ms smootherstep transitions everywhere** | **built 2026-09-18** | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
 
 ---
@@ -52,6 +52,30 @@ to pairing — **but that is an inference, and it has not been confirmed.** Ask 
 building; it is the only item here that needs a schema change (a `pair_id` group key on
 `notes.note`, chosen over a symmetric `paired_with` so "at least pairs" can grow to sets
 without a second migration).
+
+## ✅ 2026-09-19 — three-way parity BUILT
+
+`js/editor/commands.js` is the registry; the footer, the selection menu and the keymap
+are three renderers over it. 20 commands, every one in all three surfaces.
+
+**Parity is enforced at runtime, not only by a test.** Operator's rule, verbatim: *"if
+three-way parity isn't established, the button should automatically have a red
+highlight so I KNOW that it's unfinished."* `markParity()` audits against the DOM that
+actually rendered — so it catches a surface silently dropping a command, which a static
+list comparison would not — and paints any gap red with a `data-missing` note saying
+which surface is absent. A test can go unrun; a red button cannot.
+
+**Still not built, and deliberately:** the double-tap-space LATCHED command mode. The
+hold-chord is in. Latched mode needs the two taps not to insert two spaces, and every
+way to do that either adds latency to every space or deletes characters after the fact.
+Not worth the risk to typing for a second route to the same 20 commands. **This does
+not show as a parity gap because every command already has a shortcut** — the gap is a
+second input *method*, not a missing command.
+
+**The chord is desktop-only by design.** There is no space bar to hold on a phone, and
+intercepting keydown is exactly what breaks iOS autocorrect, dictation and IME. That is
+why the footer and selection menu have to carry all 20 — which is the parity rule's
+real purpose.
 
 ## ⚠ 2026-09-18 — items 4, 5, 6 and 7 are ONE feature, not four
 

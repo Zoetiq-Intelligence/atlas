@@ -81,18 +81,30 @@
   flex: 1 1 50%;
   min-width: 0;
   height: var(--top-row);
-  padding: 0 8px;
+  display: flex; align-items: center; gap: 2px;
   border-radius: 8px;
+  background: transparent;
+}
+.tabtitle {
+  flex: 1 1 auto; min-width: 0;
+  height: var(--top-row);
+  padding: 0 8px;
   text-align: left;
   font-size: 14px; font-weight: 600;
   color: var(--ink-3);
-  background: transparent;
+  border-radius: 8px;
 }
+/* One list button per pane on desktop, none on phone — there, the single button on
+   the far left of the header opens for whichever pane is on screen. */
+.tabmenu { display: none; flex: 0 0 auto; width: 26px; height: var(--top-row);
+           place-items: center; border-radius: 7px; color: var(--ink-3); font-size: 13px; }
+.tabmenu:hover { background: var(--paper-2); color: var(--ink); }
 .tab .tt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tab:hover { background: var(--chrome); }
+.tabtitle:hover { background: var(--chrome); }
 /* Current means "the one New Note will land in", not "the visible one" — on desktop
    both panes are visible at once. */
-.tab[aria-current="true"] { color: var(--ink); background: var(--chrome); }
+.tab[aria-current="true"] { background: var(--chrome); }
+.tab[aria-current="true"] .tabtitle { color: var(--ink); }
 
 /* The scroller is pannable from the edge strips, the peek and the gutter. Inside the
    text a horizontal drag belongs to selection, which is why this is pan-y and not a
@@ -194,6 +206,9 @@
   .pane { flex: 1 1 50%; }
   .pane::after { display: none; }
   .edge { display: none; }
+  .tabmenu { display: grid; }
+  #topbar > button[data-act="list"] { display: none; }   /* replaced by the per-pane ones */
+
   #gutter {
     pointer-events: auto;   /* a real drag target here; see the phone rule above */
     position: static;
@@ -263,17 +278,49 @@
          padding: 10px 14px calc(var(--sa-bottom) + 14px); border-top:1px solid var(--rule); }
 .quiet { font-size:13px; color:var(--ink-3); }
 .quiet:hover { color: var(--ink-2); }
+/* A row carries its own destinations. pan-y is what makes the swipe possible without
+   a gesture arbiter: the browser keeps vertical scrolling of the list, and hands us
+   anything horizontal. Same split as .editor (pan-y) against the edge strips (pan-x). */
 .nrow {
-  display: block; width: 100%; text-align: left;
-  padding: 10px 12px; margin-bottom: 2px;
+  position: relative;
+  display: flex; align-items: center; gap: 4px;
+  width: 100%;
+  margin-bottom: 2px;
   border-radius: var(--r);
+  touch-action: pan-y;
 }
 .nrow:hover { background: var(--chrome); }
 .nrow[aria-current="true"] { background: var(--accent); }
 .nrow[aria-current="true"] .t, .nrow[aria-current="true"] .s { color: #fff; }
+
+.nmain {
+  flex: 1 1 auto; min-width: 0;
+  display: block; text-align: left;
+  padding: 10px 4px 10px 12px;
+  border-radius: var(--r);
+}
 .nrow .t { display: block; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nrow .s { display: block; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .nrow .pin { color: var(--accent-ink); }
+
+.nacts { flex: 0 0 auto; display: flex; gap: 2px; padding-right: 6px; }
+.nsend {
+  width: 30px; height: 34px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  font-size: 15px; line-height: 1;
+  color: var(--ink-3);
+}
+.nsend:hover { background: var(--paper-2); color: var(--ink); }
+.nrow[aria-current="true"] .nsend { color: #fff; }
+
+/* While a row is being dragged it must paint above its neighbours, or the translate
+   slides under the next row instead of over it. */
+.nrow.swiping { z-index: 2; }
+.nrow.to-left  { background: var(--chrome); box-shadow: inset 3px 0 0 var(--accent); }
+.nrow.to-right { background: var(--chrome); box-shadow: inset -3px 0 0 var(--accent); }
+
+#dest { font-size: 12px; color: var(--ink-3); padding: 0 14px; margin: 8px 0 0; }
 
 .empty { padding: 28px 16px; text-align: center; color: var(--ink-3); font-size: 14px; }
 
@@ -431,3 +478,68 @@
 #pip[data-s="dirty"] { background: var(--accent); }
 #pip[data-s="off"]   { background: var(--danger); }
 #pip[data-s="ok"]    { background: transparent; }
+
+/* ---------- tooltip ----------
+   Own element, not the native `title`: the native delay is the browser's and is about
+   a second, and "instantly start displaying" is the requirement. Positioned by
+   transform so showing one never triggers layout of anything else. */
+#tip {
+  position: fixed; top: 0; left: 0; z-index: 90;
+  pointer-events: none;
+  max-width: 60vw;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--ink); color: var(--paper);
+  font-size: 12px; line-height: 1.25; white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-smoother);
+}
+#tip.on { opacity: .96; }
+
+/* ---------- selection menu ----------
+   Triggered by there BEING a selection, not by right-click. On iOS the system callout
+   appears too, so this is offset clear of it rather than replacing it — it supplements
+   (the 2026-09-17 ruling). */
+#selmenu {
+  position: fixed; top: 0; left: 0; z-index: 80;
+  max-width: min(94vw, 520px);
+  border-radius: 10px;
+  background: var(--chrome);
+  border: 1px solid var(--rule);
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-smoother);
+}
+#selmenu.on { opacity: 1; }
+.selbar {
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: min(94vw, 520px);
+}
+.selbar::-webkit-scrollbar { display: none; }
+.selbtn {
+  flex: 0 0 auto;
+  min-width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  color: var(--ink-2);
+}
+.selbtn:hover { background: var(--paper-2); color: var(--ink); }
+.selbtn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.selbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- unfinished ----------
+   Operator's rule: a command that does not have all three surfaces plus a working
+   implementation must LOOK unfinished, in the app, without anyone running a test. */
+.fbtn.incomplete, .selbtn.incomplete {
+  box-shadow: inset 0 0 0 2px var(--danger);
+  position: relative;
+}
+.fbtn.incomplete::after, .selbtn.incomplete::after {
+  content: "";
+  position: absolute; top: 2px; right: 2px;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--danger);
+}

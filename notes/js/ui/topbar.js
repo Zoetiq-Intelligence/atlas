@@ -20,11 +20,18 @@ export function createTopbar(el, { onList, onNew, onPane } = {}) {
   const labels = tabs.map(t => t.querySelector('.tt'));
   let active = 0;
 
-  el.querySelector('[data-act="list"]').onclick = () => onList && onList();
+  // The phone's single list button opens for whichever pane is on screen; there is
+  // only one, so there is nothing to disambiguate.
+  el.querySelector('[data-act="list"]').onclick = () => onList && onList(active);
   el.querySelector('[data-act="new"]').onclick = () => onNew && onNew(active);
 
-  tabs.forEach((tab, i) => {
-    tab.onclick = () => onPane && onPane(i);
+  // Desktop: one list button per pane, each naming its own destination.
+  el.querySelectorAll('.tabmenu').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); onList && onList(Number(btn.dataset.pane)); };
+  });
+
+  el.querySelectorAll('.tabtitle').forEach(btn => {
+    btn.onclick = () => onPane && onPane(Number(btn.dataset.pane));
   });
 
   function setActive(i) {

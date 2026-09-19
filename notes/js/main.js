@@ -9,6 +9,9 @@ import { newDoc, coerce, titleOf } from './model/doc.js';
 import { createEditor } from './editor/input.js';
 import { createPanes } from './ui/panes.js';
 import { createFooter } from './ui/footer.js';
+import { createSelectionMenu } from './ui/selection.js';
+import { createKeys } from './ui/keys.js';
+import { markParity } from './editor/commands.js';
 import { createSidebar } from './ui/sidebar.js';
 import { createTopbar } from './ui/topbar.js';
 import * as layout from './ui/layout.js';
@@ -24,7 +27,7 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
       return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     }));
 
-let panes, footer, sidebar, topbar;
+let panes, footer, sidebar, topbar, selmenu;
 let editors = [];
 let openIds = [null, null];
 let focused = 0;
@@ -113,7 +116,7 @@ async function startApp() {
   $('#app').hidden = false;
 
   topbar = createTopbar($('#topbar'), {
-    onList: () => sidebar.toggle(),
+    onList: pane => sidebar.openFor(pane),
     onNew: pane => newNote(null, pane),       // lands in whichever segment is current
     onPane: i => { panes.goTo(i); setFocus(i); },
   });
@@ -130,10 +133,32 @@ async function startApp() {
     onFocus: () => setFocus(i),
   }));
 
-  footer = createFooter($('#footer'), () => editors[focused]);
+  // The three surfaces, all rendered from editor/commands.js. `host` carries the
+  // app-level actions a command can need that an editor does not own.
+  const host = {
+    search: () => { sidebar.openFor(focused); $('#search').focus(); },
+    prompt: msg => window.prompt(msg),
+  };
+  footer = createFooter($('#footer'), () => editors[focused], host);
+  selmenu = createSelectionMenu($('#selmenu'), () => editors[focused], host);
+  createKeys({ getEditor: () => editors[focused], host, onAfter: () => footer.sync() });
+
+  // Operator's rule: an unfinished command must be visible IN THE APP, not only in a
+  // test run. Audited against the DOM that actually rendered, so a surface silently
+  // dropping a command is caught too.
+  const parity = markParity($('#footer'), $('#selmenu'));
+  window.__PARITY__ = parity;            // test surface
+  const gaps = parity.filter(r => !r.ok);
+  if (gaps.length) console.warn('[parity] incomplete:', gaps.map(g => `${g.cmd.id} (${g.missing.join(', ')})`));
 
   sidebar = createSidebar($('#sidebar'), $('#scrim'), {
-    onOpen: id => openInto(focused, id),
+    // `pane` is undefined when the row itself was tapped (use the focused pane) and
+    // 0/1 when a destination was named by a button or a swipe.
+    onOpen: async (id, pane) => {
+      const target = pane === undefined ? focused : pane;
+      await openInto(target, id);
+      if (pane !== undefined) { panes.goTo(target); setFocus(target); editors[target].focus(); }
+    },
     onNew: folderId => newNote(folderId),
     onNewFolder: name => newFolder(name),
   });

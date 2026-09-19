@@ -86,6 +86,7 @@
         <h1>Notes</h1>
         <button id="new" class="icon" type="button" aria-label="New note"></button>
       </div>
+      <div id="dest" hidden></div>
       <input id="search" type="search" placeholder="Search" autocomplete="off">
       <div id="folders"></div>
     </div>
@@ -108,8 +109,18 @@
   <header id="topbar">
     <button type="button" data-act="list" aria-label="Notes list">&#9776;</button>
     <div id="tabs" role="group" aria-label="Open notes">
-      <button type="button" class="tab" data-pane="0" aria-current="true"><span class="tt">New Note</span></button>
-      <button type="button" class="tab" data-pane="1"><span class="tt">New Note</span></button>
+      <!-- Desktop gets a list button PER PANE, so "open this note here" needs no memory
+           of which pane was touched last. Phone gets the single one on the far left,
+           because only one pane is on screen to open into. A button cannot nest inside
+           a button, so each segment is a container holding the two. -->
+      <div class="tab" data-pane="0" aria-current="true">
+        <button type="button" class="tabmenu" data-pane="0" aria-label="Notes list for the left pane">&#9776;</button>
+        <button type="button" class="tabtitle" data-pane="0"><span class="tt">New Note</span></button>
+      </div>
+      <div class="tab" data-pane="1">
+        <button type="button" class="tabmenu" data-pane="1" aria-label="Notes list for the right pane">&#9776;</button>
+        <button type="button" class="tabtitle" data-pane="1"><span class="tt">New Note</span></button>
+      </div>
     </div>
     <span id="pip" title="Sync"></span>
     <button type="button" data-act="new" aria-label="New note">&#43;</button>
@@ -138,6 +149,10 @@
        interrupting toast is what gets suppressed, not the information. -->
   <button id="updbadge" type="button" hidden>Update ready</button>
 </div>
+
+<!-- The selection menu. Outside #app so it is never clipped by a pane's overflow,
+     and positioned by transform like the tooltip. -->
+<div id="selmenu" hidden></div>
 
 <div id="diag" hidden></div>
 <div id="backups-panel" hidden></div>
