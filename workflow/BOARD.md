@@ -4,7 +4,7 @@
 > Per-project detail lives in `projects/*/STATE.md`.
 
 > Permanent record. Chat is transitory; this file is the state.
-> Last updated: 2026-09-18 · Master: successor cloud session (has GitHub write access)
+> Last updated: 2026-09-23 · Master: successor cloud session (has GitHub write access)
 > Coordination topology: see `_protocol/COORDINATION.md` — it supersedes the capability findings in `HANDOFF-MASTER.md`.
 
 ---
@@ -139,6 +139,49 @@ Raised 2026-09-13. Whiteboarding, mindmapping, diagramming for tablets and graph
 
 ---
 
+### 7. Hotkey atlas — the LAlt / Space split
+Raised 2026-09-23, verbatim:
+
+> btw we will be integrating another system that controls my PC Workflows (with things
+> like Fancyzones, AHK, etc.) that I already have - all of its hotkeys are using LAlt.
+> so we will need a general hotkey interface that lets us see what Windows uses, what
+> other apps already use, then helps us understand our LAlt vs. Spacebar split.
+
+**Proposed principle: the modifier IS the scope.**
+- **LAlt = global.** Windows, zones, apps, workflows. Hooked system-wide by AHK, so it
+  works everywhere and the browser never sees it.
+- **Space = local.** Content only, only inside an editing surface of our own apps, only
+  with no other modifier held.
+
+Held to that, the two cannot collide by construction, and the atlas's job becomes making
+that visible and catching the exceptions — rather than refereeing every key by hand.
+
+**Already true in the notes app, and now tested:** the Space layer bails on any Alt-held
+key before it looks at Space, so an LAlt chord is never intercepted. Verified the test
+fails when that guard is removed.
+
+**The one place the two modifiers physically meet: Alt+Space.** Windows' window menu,
+and PowerToys Run's default activation — and FancyZones ships inside PowerToys. ⚠ From
+knowledge, NOT measured on memeputer; the PowerToys defaults have moved between releases.
+Read it from his actual PowerToys settings before relying on it.
+
+**Owner: master, not a project.** COORDINATION.md T0.5 — a keymap claimed by several
+projects is a shared resource, so no project may own it. Each layer has exactly one
+source: the Space layer is READ from `notes/js/editor/commands.js`, never copied into the
+atlas, or the two drift the way the footer and keymap did before 2026-09-19.
+
+**Layers:** Windows reserved → other apps (Edge, PowerToys) → LAlt (the AHK system) →
+Space (ours).
+
+**Blocked on:** the LAlt layer's actual contents — his AHK script(s) and PowerToys
+keyboard settings. ⚠ **`atlas` is a PUBLIC repo.** Scripts are pasted into chat, and only
+the extracted hotkey table gets committed; never the scripts themselves, which can carry
+paths and personal detail.
+
+- Status: not started. Recorded so the Space layer is designed against it from now on.
+
+---
+
 ## Parked
 
 ### Taskbar vfx
@@ -201,3 +244,4 @@ Local Claude Code is a **peer, not a child** — there is no messaging link to i
 - Whiteboard: where does it sit in build order? It is project #6 and must not displace the notes app.
 - Whiteboard: primary target — iPad + Pencil, or Windows + graphics display? Windows exposes twist, tangential pressure and barrel buttons; Apple Pencil exposes none of them.
 - Connect a folder on memeputer — nothing local is reachable from master until then.
+- **The PC Workflows system (AHK + FancyZones, all on LAlt) is an existing system this board has never listed.** Is it board #3 grown up, or its own project? Second existing system the board did not know about — see the Omicron Alpha question above, still unanswered since 2026-09-13.

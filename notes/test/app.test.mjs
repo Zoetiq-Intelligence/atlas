@@ -378,6 +378,33 @@ const afterFast = await p.locator('.pane:nth-of-type(1) .editor .txt').first().i
 ck(afterFast.length > beforeFast.length,
    `a fast space+key types instead of chording (${JSON.stringify(beforeFast.slice(-12))} -> ${JSON.stringify(afterFast.slice(-12))})`);
 
+// --- the LAlt / Space split -------------------------------------------------
+// 2026-09-23: the operator's existing PC Workflows system (AHK, FancyZones) puts ALL
+// its hotkeys on LAlt. The split only works if the Space layer never touches an
+// Alt-held key — so that property is asserted here rather than left as an accident
+// of a guard clause that someone could "tidy" away.
+//
+// Alt+Space matters most: it is the Windows window menu, and PowerToys Run's default.
+// It is the one place the two modifiers physically meet.
+const altPassed = await p.evaluate(() => {
+  const t = document.querySelector('.pane .editor .txt');
+  t.focus();
+  const fire = init => {
+    const ev = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+    t.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const altSpace = fire({ key: ' ', code: 'Space', altKey: true });
+  const altA = fire({ key: 'a', code: 'KeyA', altKey: true });
+  // and nothing was left half-held by the Alt+Space press
+  const stuck = fire({ key: 'a', code: 'KeyA' });
+  return { altSpace, altA, stuck };
+});
+ck(altPassed.altSpace === false,
+   'Alt+Space passes through untouched — the Windows window menu and PowerToys Run live there');
+ck(altPassed.altA === false, 'an LAlt chord is never intercepted by the Space layer');
+ck(altPassed.stuck === false, 'an Alt+Space press leaves no half-held Space behind');
+
 // --- naming the destination pane -------------------------------------------
 // "not one that relies on what we clicked into last" — every route into a note now
 // names the pane it fills, so the same gesture means the same thing every time.
