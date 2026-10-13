@@ -11,7 +11,7 @@
    reinstall. A hand-bumped constant can be forgotten, and a forgotten bump is a
    byte-identical worker, no handover at all, and a symptom indistinguishable from a
    caching bug. A hash cannot be forgotten. */
-var CACHE  = 'notes-8327575644cd';
+var CACHE  = 'notes-ef930d477279';
 var PREFIX = CACHE.replace(/-[0-9a-f]{12}$/, '');
 /* GUIDE §7.10 — emitted from the build's own write log, never hand-maintained: a
    hand-kept array drifts the moment anyone adds a file, and the drift is invisible

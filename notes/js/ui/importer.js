@@ -8,12 +8,16 @@
 // a note-management action like "new note", not a way of controlling input, so the
 // three-way parity rule does not apply to it.
 
-import { textToDoc } from '../model/import.js';
+import { textToDoc, jsonToDoc, isNoteFile } from '../model/import.js';
+
+// .txt is the untouched record; .atlasnote.json carries structure. Same proof for both.
+const convert = (file, text, suffix) =>
+  (isNoteFile(file.name, text) ? jsonToDoc : textToDoc)(text, { suffix });
 
 export function createImporter(root, { onImport } = {}) {
   const picker = document.createElement('input');
   picker.type = 'file';
-  picker.accept = '.txt,text/plain';
+  picker.accept = '.txt,text/plain,.json,application/json';
   picker.multiple = true;
   picker.hidden = true;
   document.body.appendChild(picker);
@@ -55,7 +59,7 @@ export function createImporter(root, { onImport } = {}) {
         row.className = 'im-row';
         row.style.cssText = 'padding:8px 0;border-top:1px solid var(--rule);font-size:13px';
         try {
-          const r = textToDoc(t, { suffix: sfx.value });
+          const r = convert(files[i], t, sfx.value);
           row.innerHTML = '<b></b><br><span style="color:var(--ink-2)"></span>';
           row.querySelector('b').textContent = r.title || '(untitled)';
           row.querySelector('span').textContent =
@@ -77,7 +81,7 @@ export function createImporter(root, { onImport } = {}) {
       go.disabled = true;
       msg.textContent = 'Importing…';
       try {
-        const made = texts.map(t => textToDoc(t, { suffix: sfx.value }));
+        const made = texts.map((t, i) => convert(files[i], t, sfx.value));
         await onImport(made);
         msg.textContent = `Imported ${made.length}. They will sync to your other devices.`;
         setTimeout(close, 1200);

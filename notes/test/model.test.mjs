@@ -80,5 +80,25 @@ const bd = textToDoc(big).doc;
 eq(coerce(JSON.parse(JSON.stringify(bd))).blocks.map(x => x.text).join('\n'), big.split('\r\n').join('\n'),
    '6,000 lines survive JSON and coerce() unchanged');
 
+// --- structured import (.atlasnote.json) ---------------------------------------
+const { jsonToDoc, isNoteFile } = await import('../js/model/import.js');
+const nf = blocks => JSON.stringify({ atlas: 'note', v: 1, title: 't', doc: { v: 1, blocks } });
+const sj = jsonToDoc(nf([
+  { id: 'a', t: 'p', text: 'Head', marks: [] },
+  { id: 'b', t: 'check', text: 'call kids', marks: [], done: false, depth: 0 },
+  { id: 'c', t: 'li', text: 'detail', marks: [], depth: 0 },
+  { id: 'd', t: 'li', text: 'sub point', marks: [], depth: 1 },
+]));
+eq(sj.doc.blocks.map(b => [b.t, b.text, b.depth || 0]), [['p','Head',0],['check','call kids',0],['li','detail',0],['li','sub point',1]],
+   'a note file keeps its checkboxes, bullets and hyphens (depth-1 bullets) exactly');
+eq(isNoteFile('x.atlasnote.json', ''), true, 'recognised by extension');
+eq(isNoteFile('x.txt', '{"atlas":"note"'), true, 'and by content, whatever the name');
+eq(isNoteFile('x.txt', 'plain words'), false, 'plain text is not mistaken for a note file');
+let refused = '';
+try { jsonToDoc(nf([{ id: 'z', t: 'bogus', text: 'q', marks: [] }])); } catch (e) { refused = e.message; }
+eq(/refused/.test(refused), true, 'a block coerce() would rewrite is refused, not silently changed');
+try { jsonToDoc('{"atlas":"something-else"}'); refused = ''; } catch (e) { refused = e.message; }
+eq(/not an Atlas note/.test(refused), true, 'a JSON file that is not a note is refused');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

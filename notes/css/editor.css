@@ -44,6 +44,10 @@
   color: var(--accent-ink);
   line-height: var(--lh);
 }
+/* Hyphens are nested bullets, not a new block type: a new type would be rewritten to
+   body text by any older build's coerce() and lost on its next save. Depth is already
+   stored, so the dash is presentation only and every build agrees on the data. */
+.row[data-t="li"]:not([data-depth="0"])::before { content: "–"; }
 .row[data-t="ol"] { counter-increment: ol0; }
 .row[data-t="ol"]::before {
   content: counter(ol0) ".";

@@ -10,7 +10,7 @@
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 0 | **Backups every 6h + revert** | **built 2026-09-18; needs the SQL run** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
+| 0 | **Backups every 6h + revert** | ⚠ **built, NEVER INSTALLED — verified 2026-10-13: `notes.snapshot` does not exist** | Asked for 09-18. Server-side snapshots via `notes.take_snapshot`, `notes.restore_snapshot`. Client asks; Postgres builds the snapshot. SQL in `_protocol/SETUP-BACKUP.sql` — **not yet run on the project**, so the feature is inert until it is. |
 | 1 | **Live sync, sub-1s** | **built 2026-09-18; needs the SQL run** | Broadcast-from-database, not `postgres_changes`. Full wire protocol in `projects/notes-app/REALTIME-FINDINGS.md`. Reasoning in `HANDOFF-2026-09-17.md` §6. |
 | 1b | **One SPA header** | **built 2026-09-18** | Replaced both per-pane headers. Title segments are sized to the divider's fraction so each sits above its pane, and double as the pane switcher; list / sync / new note are global and live there once. |
 | 1c | **Same note in both panes mirrors** | **fixed 2026-09-18** | Was a data-loss bug, not a display one: only the title mirrored, so the second pane's next save wrote its stale doc back over the edit. No network involved. |
@@ -24,6 +24,23 @@
 | 8 | **150ms smootherstep transitions everywhere** | **built 2026-09-18** | Tooltip fades, scrolling transport, all animations. Smootherstep is `6t⁵ − 15t⁴ + 10t³`; in CSS use `linear()` with sampled points, or a `cubic-bezier` approximation. |
 
 ---
+
+## Item 12 — leaving iOS Notes (2026-10-13)
+
+> I only use iOS Notes for this ONE note sequence, and I want to get off of it as soon as
+> possible becuase it runs poorly with large amounts of text/emojis/styling on the one note
+
+1. **Import the two notes, marked OLD** — `Today` (5,585 lines) and `New Day` (1,970). Built:
+   Import in the slide-over, lossless by proof (`model/import.js`). The OLD notes are verbatim.
+2. **A third note, "☀️🌞⛅️ New Day", merging both "without losing a single sentence"** —
+   `tools/merge-notes.mjs`, which writes nothing unless its coverage proof passes. Formatting
+   for the merge only, operator's words: *"use checkboxes, hyphens and bullet points for
+   successive lines that don't have a newline in between them just so that it's easier for
+   me to parse the merged file"*. Rule as built: in each run of consecutive lines, a short
+   label opens it, tasks become checkboxes, other lines bullets, indented/`>` lines hyphens
+   (depth-1 bullets, drawn as a dash). Heuristic and regenerable — the OLD notes hold every
+   original line.
+3. **Later:** every Today/Daily note merged into one long sequence, then split by category.
 
 ## Item 10 — sending a note to a pane (revised twice, 2026-09-18)
 

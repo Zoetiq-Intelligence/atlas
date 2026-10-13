@@ -508,6 +508,36 @@ const curTitle = await p.locator('.tab[aria-current="true"] .tt').textContent();
 ck(curTitle === '☀️🌞⛅️ New Day (OLD)',
    'the imported note opens in the current pane so it can be checked straight away, got ' + JSON.stringify(curTitle));
 
+// --- structured import: checkboxes, bullets, hyphens --------------------------
+// The merged note is a .atlasnote.json carrying structure a .txt cannot. Hyphens are
+// depth-1 bullets drawn with a dash — presentation only, so no older build can lose them.
+await p.click('#topbar > [data-act="list"]');
+await p.waitForTimeout(320);
+const NOTE = JSON.stringify({ atlas: 'note', v: 1, title: 'Merged', doc: { v: 1, blocks: [
+  { id: 'm1', t: 'p', text: 'Merged', marks: [] },
+  { id: 'm2', t: 'check', text: 'call the school', marks: [], done: false, depth: 0 },
+  { id: 'm3', t: 'li', text: 'a detail', marks: [], depth: 0 },
+  { id: 'm4', t: 'li', text: 'a sub point', marks: [], depth: 1 },
+] } });
+const [chooser2] = await Promise.all([p.waitForEvent('filechooser'), p.click('#import')]);
+await chooser2.setFiles({ name: 'Merged.atlasnote.json', mimeType: 'application/json', buffer: Buffer.from(NOTE, 'utf8') });
+await p.waitForSelector('#import-panel:not([hidden]) .im-row', { timeout: 4000 });
+ck((await p.locator('#import-panel .im-row').textContent()).includes('verified lossless'),
+   'a structured note file is verified before import too');
+await p.click('#im-go');
+await p.waitForTimeout(1500);
+const ed = '.pane .editor';
+const marker = async text => p.evaluate(t => {
+  const row = [...document.querySelectorAll('.row')].find(r => r.querySelector('.txt')?.textContent === t);
+  return row ? { t: row.dataset.t, before: getComputedStyle(row, '::before').content } : null;
+}, text);
+const chk = await marker('call the school');
+const bul = await marker('a detail');
+const hyp = await marker('a sub point');
+ck(chk && chk.t === 'check', 'a checkbox arrives as a checkbox');
+ck(bul && /•/.test(bul.before), 'a bullet draws a bullet, got ' + (bul && bul.before));
+ck(hyp && /–/.test(hyp.before), 'a nested bullet draws a hyphen, got ' + (hyp && hyp.before));
+
 // --- backups ---------------------------------------------------------------
 // The operator's requirement: a snapshot whenever an instance is on and six hours
 // have passed, with a way back. The snapshot is built server-side, so these tests
