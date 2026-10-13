@@ -46,6 +46,7 @@ p.on('console', m=>{ if(m.type()!=='error') return;
   errs.push('console: '+m.text()); });
 
 let restCalls = [];
+let noteGets = [];
 let profileHeaders = [];
 let snapshots = [];          // newest first, like the real order=taken_at.desc
 let rpcCalls = [];
@@ -72,6 +73,7 @@ await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
   if (u.pathname === '/rest/v1/folder')
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(folders) });
   if (u.pathname === '/rest/v1/note') {
+    if (m === 'GET') noteGets.push(u.search);
     if (m === 'POST') {
       const row = JSON.parse(route.request().postData() || '{}');
       row.updated_at = new Date().toISOString();
@@ -182,6 +184,19 @@ await p.waitForTimeout(900);
 ck(notes.length >= 1, 'note upserted to the server, count=' + notes.length);
 ck(notes.some(n => n.title === 'Shopping list'), 'server row carries the title');
 ck(notes.every(n => !('user_id' in n)), 'client never sends user_id — RLS defaults it');
+
+// --- polls are incremental ------------------------------------------------
+// Every poll used to re-download every note. With a 5,585-line daily log that is
+// ~0.5 MB every five seconds per open device. The first pull after launch is full;
+// after that the client asks only for rows newer than the newest it has seen.
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(700);
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(700);
+ck(noteGets.length >= 2, `notes were polled more than once (${noteGets.length})`);
+ck(!/updated_at=gt/.test(noteGets[0] || ''), 'the first pull after launch is a full reconcile');
+ck(noteGets.some(q => /updated_at=gt\./.test(q)),
+   'later pulls ask only for newer rows: ' + JSON.stringify(noteGets.slice(-2)));
 
 // The tables live in a dedicated `notes` Postgres schema, not `public`. PostgREST
 // reaches it only by header, and a write missing Content-Profile silently targets
@@ -459,6 +474,39 @@ await p.waitForTimeout(500);
 const swiped = await p.locator('.tab[data-pane="1"] .tt').textContent();
 ck(swiped === swipeTitle,
    `swiping a row right sends it to the right pane (${JSON.stringify(swiped)} vs ${JSON.stringify(swipeTitle)})`);
+
+// --- import -------------------------------------------------------------------
+// Built to get the operator off iOS Notes "without losing a single sentence". Driven
+// through the real button and a real file chooser, with the export format iOS Notes
+// actually produces: CRLF on every line, tabs, blank lines, emoji with variation
+// selectors.
+await p.click('#topbar > [data-act="list"]');
+await p.waitForTimeout(320);
+const SRC = '☀️🌞⛅️ New Day\r\n\r\nAtlas\r\n\tindented\r\n \r\nlast line\r\n';
+const before = notes.length;
+const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.click('#import')]);
+await chooser.setFiles({ name: 'New Day.txt', mimeType: 'text/plain', buffer: Buffer.from(SRC, 'utf8') });
+await p.waitForSelector('#import-panel:not([hidden]) .im-row', { timeout: 4000 });
+ck((await p.locator('#import-panel .im-row').textContent()).includes('verified lossless'),
+   'the preview proves each file lossless before anything is saved');
+await p.fill('#im-sfx', '(OLD)');
+await p.waitForTimeout(80);
+ck((await p.locator('#import-panel .im-row b').textContent()) === '☀️🌞⛅️ New Day (OLD)',
+   'the title preview shows the mark that will be stored');
+await p.click('#im-go');
+await p.waitForTimeout(1600);
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(900);
+const imported = notes.find(n => n.title === '☀️🌞⛅️ New Day (OLD)');
+ck(!!imported && notes.length === before + 1, 'the import reached the server as one new note');
+const gotText = imported ? imported.doc.blocks.map(b => b.text).join('\n') : '';
+ck(gotText === '☀️🌞⛅️ New Day (OLD)\n\nAtlas\n\tindented\n \nlast line',
+   'every line arrives exactly — no \\r, tabs and blank lines intact: ' + JSON.stringify(gotText));
+ck(imported && !('user_id' in imported), 'an import writes through the normal path — no user_id, RLS decides');
+// It opens in the FOCUSED pane — whichever the list was opened for — not a fixed one.
+const curTitle = await p.locator('.tab[aria-current="true"] .tt').textContent();
+ck(curTitle === '☀️🌞⛅️ New Day (OLD)',
+   'the imported note opens in the current pane so it can be checked straight away, got ' + JSON.stringify(curTitle));
 
 // --- backups ---------------------------------------------------------------
 // The operator's requirement: a snapshot whenever an instance is on and six hours

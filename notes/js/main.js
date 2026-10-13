@@ -17,6 +17,7 @@ import { createTopbar } from './ui/topbar.js';
 import * as layout from './ui/layout.js';
 import { mount as mountDiag } from './ui/diag.js';
 import { mount as mountBackups } from './ui/backups.js';
+import { createImporter } from './ui/importer.js';
 import * as backup from './data/backup.js';
 
 const $ = s => document.querySelector(s);
@@ -192,6 +193,8 @@ async function startApp() {
   // Snapshots. The scheduler is started here rather than at module load because it
   // needs a signed-in session to be worth anything — an unauthenticated RPC just 401s.
   $('#backups').onclick = () => mountBackups($('#backups-panel'), { onRestored });
+  const importer = createImporter($('#import-panel'), { onImport: importNotes });
+  $('#import').onclick = () => importer.pick();
   backup.onState(s => {
     // A backup that cannot run must not be silent. It is the one feature whose whole
     // value is that it already happened by the time you need it, so a failure that
@@ -259,6 +262,27 @@ function setFocus(i) {
 async function onRestored() {
   await sync.pull();
   location.reload();
+}
+
+// Imported notes go through the normal local-first path — IndexedDB, outbox, then the
+// server under the user's own session — so an import is indistinguishable from notes
+// typed by hand: same RLS, same sync, same backups. No elevated write path exists.
+async function importNotes(items) {
+  let first = null;
+  for (const it of items) {
+    const row = {
+      id: uuid(), title: it.title, doc: it.doc, folder_id: null, pinned: false,
+      created_at: now(), updated_at: now(), deleted_at: null,
+    };
+    await sync.saveLocal(row);
+    if (!first) first = row.id;
+  }
+  await refresh();
+  // Show what was just brought in: the note opened behind a still-open list is a note
+  // the user cannot see without dismissing something first.
+  sidebar.close();
+  if (first) await openInto(focused, first);
+  sync.flush();
 }
 
 async function refresh() {

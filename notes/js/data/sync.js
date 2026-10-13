@@ -97,9 +97,29 @@ export async function flush() {
   }
 }
 
+// INCREMENTAL PULL. Every poll used to fetch every note in full. Fine for short notes;
+// with a 5,585-line daily log imported that is ~0.5 MB every five seconds per open
+// device — the exact "slow with one big note" that is the reason for leaving iOS Notes.
+//
+// The cursor is the newest SERVER updated_at seen, never this device's clock: a client
+// clock running ahead would skip rows forever. It lives in memory only, so every launch
+// begins with one full reconcile and only the polls after it are incremental.
+//
+// The 30s overlap is for a real Postgres property: updated_at is now(), which is the
+// TRANSACTION START time. A transaction that began before our last read but committed
+// after it carries an updated_at older than the cursor and would be missed by a strict
+// "greater than". Re-reading a 30s window is idempotent under last-write-wins, so the
+// overlap costs a few rows and closes the gap.
+let cursor = null;
+const OVERLAP_MS = 30000;
+// Postgres returns microseconds; Date.parse is only guaranteed for milliseconds, and
+// WebKit is the engine this has to work in. Truncate before parsing.
+const ms = iso => Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
+
 export async function pull() {
   try {
-    const [notes, folders] = await Promise.all([api.fetchNotes(), api.fetchFolders()]);
+    const since = cursor ? new Date(ms(cursor) - OVERLAP_MS).toISOString() : undefined;
+    const [notes, folders] = await Promise.all([api.fetchNotes(since), api.fetchFolders()]);
     for (const f of folders) await set(FOLDERS, f);
     // WHICH ids actually moved. Writing to IndexedDB is not the end of a pull: nothing
     // on screen re-reads the store on its own, so before this the poll was fetching
@@ -112,6 +132,9 @@ export async function pull() {
       if (mine && mine.updated_at > n.updated_at) continue;
       if (!mine || mine.updated_at !== n.updated_at) touched.push(n.id);
       await set(NOTES, n);
+    }
+    for (const n of notes) {
+      if (n.updated_at && (!cursor || ms(n.updated_at) > ms(cursor))) cursor = n.updated_at;
     }
     await kv.set(CURSOR, new Date().toISOString());
     emit('ok');

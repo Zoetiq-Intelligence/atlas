@@ -48,5 +48,37 @@ setType(d,d.blocks[0].id,'li'); eq(d.blocks[0].t,'p','toggle off');
 eq(coerce(null).blocks.length,1,'coerce null'); eq(coerce({blocks:[{t:'bogus',text:'q'}]}).blocks[0].t,'p','coerce bad type');
 eq(titleOf(newDoc([newBlock('p','  '),newBlock('p','Real')])),'Real','title skips blank');
 
+// --- import: not one character lost ----------------------------------------
+// The operator's requirement for leaving iOS Notes: "without losing a single sentence".
+// The only permitted change is line terminators; each case below is something a naive
+// split would have got wrong.
+const { textToDoc, splitLines } = await import('../js/model/import.js');
+const texts = d => d.blocks.map(x => x.text);
+
+eq(splitLines('a\r\nb\r\n'), ['a','b'], 'CRLF: no \\r left on any line, trailing terminator ends the last line');
+eq(splitLines('a\rb'), ['a','b'], 'a lone CR is a line break too');
+eq(splitLines('a\n\n\nb'), ['a','','','b'], 'runs of blank lines survive — whitespace is the operator\'s structure');
+eq(splitLines('a\n\n'), ['a',''], 'only ONE trailing terminator is dropped; a real blank last line stays');
+eq(splitLines(''), [''], 'an empty file is one empty line, not zero');
+
+const imp = textToDoc('🥤Today\r\n\r\n\tnoon call\r\n \r\n☀️🌞⛅️ x\r\n');
+eq(texts(imp.doc), ['🥤Today','','\tnoon call',' ','☀️🌞⛅️ x'],
+   'tabs, whitespace-only lines and emoji variation selectors are kept byte for byte');
+eq(imp.doc.blocks.every(x => x.t === 'p'), true, 'an import infers no structure — it is the untouched record');
+eq(imp.title, '🥤Today', 'title is the first line');
+
+const o = textToDoc('\r\n\r\nNew Day\r\nline', { suffix: '(OLD)' });
+eq(texts(o.doc), ['','','New Day (OLD)','line'], 'the suffix marks the first NON-BLANK line, which is what the title is');
+eq(o.title, 'New Day (OLD)', 'and the title reflects it');
+eq(textToDoc('x', { suffix: '   ' }).title, 'x', 'a blank suffix changes nothing');
+
+// the round trip every stored note takes on every load
+// Ends on a NON-blank line on purpose: text ending in a terminator ends its last line
+// there (as `wc -l` counts it), which the trailing-blank cases above already pin down.
+const big = Array.from({ length: 6000 }, (_, i) => i % 7 === 3 ? '' : 'line ' + i).join('\r\n');
+const bd = textToDoc(big).doc;
+eq(coerce(JSON.parse(JSON.stringify(bd))).blocks.map(x => x.text).join('\n'), big.split('\r\n').join('\n'),
+   '6,000 lines survive JSON and coerce() unchanged');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
