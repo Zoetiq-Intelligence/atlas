@@ -18,6 +18,8 @@ import * as layout from './ui/layout.js';
 import { mount as mountDiag } from './ui/diag.js';
 import { mount as mountBackups } from './ui/backups.js';
 import { createImporter } from './ui/importer.js';
+import { createMerger } from './ui/merger.js';
+import { createClaudePanel } from './ui/claude.js';
 import * as backup from './data/backup.js';
 
 const $ = s => document.querySelector(s);
@@ -195,6 +197,31 @@ async function startApp() {
   $('#backups').onclick = () => mountBackups($('#backups-panel'), { onRestored });
   const importer = createImporter($('#import-panel'), { onImport: importNotes });
   $('#import').onclick = () => importer.pick();
+  $('#paste').onclick = () => importer.paste();
+
+  // The phone's import → merge → Claude loop (2026-10-17). Merge runs on the device and
+  // creates a new note through the same path as an import; Claude sends a request to
+  // the Atlas Master thread through Horizon and shows its replies.
+  const claudePanel = createClaudePanel($('#claude-panel'), {
+    getNotes: () => notes,
+    getOpen: () => openIds.map(id => notes.find(n => n.id === id)).filter(Boolean),
+    getBuild: () => (window.UPDATE && window.UPDATE.buildId ? window.UPDATE.buildId() : ''),
+    getEmail: () => (auth.current() || {}).email || '',
+  });
+  const merger = createMerger($('#merge-panel'), {
+    getNotes: () => notes,
+    onCreate: it => importNotes([it]),
+    onAsk: (picked, text) => claudePanel.open(picked, text),
+  });
+  $('#merge').onclick = () => merger.open();
+  $('#claude').onclick = () => claudePanel.open();
+  // Ctrl+. (Cmd+. on a Mac): Horizon's feedback key, F1 of the Universal App Protocol.
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '.') {
+      e.preventDefault();
+      if (claudePanel.isOpen) claudePanel.close(); else claudePanel.open();
+    }
+  });
   backup.onState(s => {
     // A backup that cannot run must not be silent. It is the one feature whose whole
     // value is that it already happened by the time you need it, so a failure that

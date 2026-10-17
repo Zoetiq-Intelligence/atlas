@@ -50,13 +50,16 @@ let noteGets = [];
 let profileHeaders = [];
 let snapshots = [];          // newest first, like the real order=taken_at.desc
 let rpcCalls = [];
+let feedbackPosts = [];      // Horizon's public.feedback — NEVER the real one: this is the stub
+let triageRows = [];         // Horizon's public.horizon_triage, as the thread's replies land
 await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
   const u = new URL(route.request().url());
   const m = route.request().method();
   restCalls.push(m + ' ' + u.pathname);
   if (u.pathname.startsWith('/rest/')) {
     const h = route.request().headers();
-    profileHeaders.push({ m, accept: h['accept-profile'] || null, content: h['content-profile'] || null });
+    profileHeaders.push({ m, path: u.pathname, accept: h['accept-profile'] || null, content: h['content-profile'] || null,
+                          prefer: h['prefer'] || null });
   }
   if (u.pathname.startsWith('/auth/v1/otp'))
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -116,6 +119,17 @@ await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
     if (snapshotMode === 'missing')
       return route.fulfill({ status: 404, contentType: 'application/json', body: '{"code":"PGRST205"}' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(snapshots) });
+  }
+
+  // ---- Horizon (public schema) ------------------------------------------
+  if (u.pathname === '/rest/v1/feedback' && m === 'POST') {
+    feedbackPosts.push(JSON.parse(route.request().postData() || '[]')[0]);
+    return route.fulfill({ status: 201, body: '' });      // return=minimal: no body, no SELECT policy
+  }
+  if (u.pathname === '/rest/v1/horizon_triage') {
+    const ask = u.searchParams.get('ref->>ask_id');
+    const rows = ask && ask.startsWith('eq.') ? triageRows.filter(r => r.ref.ask_id === ask.slice(3)) : triageRows;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
   }
 
   return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -201,8 +215,9 @@ ck(noteGets.some(q => /updated_at=gt\./.test(q)),
 // The tables live in a dedicated `notes` Postgres schema, not `public`. PostgREST
 // reaches it only by header, and a write missing Content-Profile silently targets
 // public and 404s.
-const reads = profileHeaders.filter(h => h.m === 'GET');
-const writes = profileHeaders.filter(h => h.m !== 'GET');
+const notesApi = h => !/^\/rest\/v1\/(feedback|horizon_triage)/.test(h.path);
+const reads = profileHeaders.filter(h => h.m === 'GET' && notesApi(h));
+const writes = profileHeaders.filter(h => h.m !== 'GET' && notesApi(h));
 ck(reads.length > 0 && reads.every(h => h.accept === 'notes'), 'every read sends Accept-Profile: notes');
 ck(writes.length > 0 && writes.every(h => h.content === 'notes'), 'every write sends Content-Profile: notes');
 
@@ -600,6 +615,108 @@ await p.locator('#bk-list .bk-row button').nth(1).click();
 await p.waitForTimeout(900);
 ck(rpcCalls.filter(c => c.fn === 'restore_snapshot').length === 1, 'the second tap restores');
 await p.waitForTimeout(800);   // onRestored pulls and reloads
+
+// --- paste, merge, Claude: the phone loop (2026-10-17) ------------------------
+// "we need the ability to do the import and merge w/ Claude all on the phone".
+// Every Horizon call goes to the stub above; no test ever reaches the real feedback
+// table, where a row would become a real record and wake a real thread.
+const openList = async () => { await p.click('#topbar > [data-act="list"]'); await p.waitForTimeout(320); };
+const pasteNote = async (text, sfx) => {
+  await openList();
+  await p.click('#paste');
+  await p.waitForSelector('#import-panel:not([hidden]) #im-paste', { timeout: 4000 });
+  await p.fill('#im-paste', text);
+  await p.fill('#im-sfx', sfx);
+  await p.waitForTimeout(80);
+  ck((await p.locator('#import-panel .im-row').textContent()).includes('verified lossless'),
+     'a paste is proven lossless like a file');
+  await p.click('#im-go');
+  await p.waitForTimeout(1500);
+};
+const OLDER = 'Today\n\ndream\na podcast came up in the stream\nattic room with friends\nawkward three way call\n\ngroceries\nmilk\ngranola\n\ndecide on heat for desk';
+const NEWER = 'New Day\n\nAtlas\nget the scroll named\nbuy developer account\n\ndream\na podcast came up in the stream about strength in mentors\nattic room with friends\nawkward three way call';
+const n0 = notes.length;
+await pasteNote(OLDER, '(OLD)');
+await pasteNote(NEWER, '(OLD)');
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(900);
+const pOld = notes.find(n => n.title === 'Today (OLD)'), pNew = notes.find(n => n.title === 'New Day (OLD)');
+ck(pOld && pNew && notes.length === n0 + 2, 'two pasted notes reached the server, marked OLD');
+ck(pNew && pNew.doc.blocks.map(b => b.text).join('\n') === NEWER.replace('New Day', 'New Day (OLD)'),
+   'a pasted note keeps every line exactly');
+
+await openList();
+await p.click('#merge');
+await p.waitForSelector('#merge-panel:not([hidden])', { timeout: 4000 });
+await p.selectOption('#mg-new', pNew.id);
+await p.selectOption('#mg-old', pOld.id);
+await p.waitForSelector('#mg-go:not([disabled])', { timeout: 6000 });
+ck((await p.inputValue('#mg-title')) === 'New Day', 'the merge is titled after the newer note, without the OLD mark');
+ck(/Verified: every line of both notes/.test(await p.locator('#mg-out').textContent()), 'the panel shows the coverage proof');
+const n1 = notes.length;
+await p.click('#mg-go');
+await p.waitForTimeout(1500);
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(900);
+const merged = notes.find(n => n.title === 'New Day');
+const mt = merged ? merged.doc.blocks.map(b => b.text) : [];
+ck(merged && notes.length === n1 + 1, 'the merge is ONE new note on the server');
+ck(mt[0] === 'New Day' && mt.filter(t => t === 'attic room with friends').length === 1 &&
+   mt.includes('decide on heat for desk') && mt.some(t => t.endsWith('strength in mentors')),
+   'newer on top, a copied run kept once, nothing lost: ' + JSON.stringify(mt.slice(0, 4)));
+ck(merged && merged.doc.blocks.some(b => b.t === 'check' && b.text === 'get the scroll named'), 'the merge formats tasks as checkboxes');
+ck(notes.find(n => n.id === pOld.id).doc.blocks.length === pOld.doc.blocks.length, 'the source notes are left untouched');
+
+// the same note twice is refused
+await openList();
+await p.click('#merge');
+await p.waitForSelector('#merge-panel:not([hidden])', { timeout: 4000 });
+await p.selectOption('#mg-new', pNew.id);
+await p.selectOption('#mg-old', pNew.id);
+await p.waitForTimeout(100);
+ck(await p.isDisabled('#mg-go'), 'merging a note with itself is refused');
+// "Ask Claude instead" carries both notes over
+await p.selectOption('#mg-old', pOld.id);
+await p.click('#mg-ask');
+await p.waitForSelector('#claude-panel:not([hidden])', { timeout: 4000 });
+const chips = await p.locator('#cl-notes button.cl-chip').allTextContents();
+ck(chips.length === 2 && chips.some(c => c.startsWith('New Day (OLD)')) && chips.some(c => c.startsWith('Today (OLD)')),
+   'Ask Claude instead attaches both notes: ' + JSON.stringify(chips));
+ck(/^Merge these two notes/.test(await p.inputValue('#cl-text')), 'and words the request');
+await p.fill('#cl-text', 'Merge these two, newest on top');
+await p.click('#cl-send');
+await p.waitForTimeout(600);
+const fb = feedbackPosts[feedbackPosts.length - 1];
+ck(fb && fb.app === 'atlas' && fb.dev === true && fb.kind === 'request',
+   'the request goes to Horizon as dev feedback for atlas, kind request: ' + JSON.stringify(fb && { app: fb.app, dev: fb.dev, kind: fb.kind }));
+ck(fb && fb.text.includes(pNew.id) && fb.text.includes(pOld.id) && fb.text.startsWith('Merge these two, newest on top'),
+   'it names both notes by id so the thread can find them');
+ck(fb && fb.context && /^[0-9a-f-]{36}$/.test(fb.context.ask_id) && fb.context.note_id === pNew.id,
+   'it carries an ask_id for the reply and the first note id');
+const fbHdr = profileHeaders.filter(h => h.path === '/rest/v1/feedback').pop();
+ck(fbHdr && fbHdr.content === null && fbHdr.prefer === 'return=minimal',
+   'feedback is written to public (no Content-Profile) with return=minimal: ' + JSON.stringify(fbHdr));
+ck(/sending/.test(await p.locator('#cl-hist').textContent()), 'the request shows at once, before Horizon files it');
+// the thread replies; Horizon mirrors it into horizon_triage; the panel reads it in
+triageRows.unshift({ id: 'T1', t: Date.now() / 1000, updated: Date.now() / 1000, state: 'done',
+  verbatim: fb.text, reply: 'Merged: New Day, 9 lines.', ref: { ask_id: fb.context.ask_id, kind: 'request' }, fields: {} });
+await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await p.waitForSelector('#cl-hist .cl-a', { timeout: 10000 });
+ck((await p.locator('#cl-hist .cl-a').first().textContent()) === 'Merged: New Day, 9 lines.', 'the reply appears in the panel');
+ck((await p.locator('#cl-hist .cl-q').first().textContent()) === 'Merge these two, newest on top',
+   'the request is shown as typed, without the notes trailer');
+ck(!/sending/.test(await p.locator('#cl-hist').textContent()), 'a filed request stops showing as sending');
+const hist = profileHeaders.filter(h => h.path === '/rest/v1/horizon_triage');
+ck(hist.length > 0 && hist.every(h => h.accept === null), 'replies are read from public, not the notes schema');
+await p.click('#cl-close');
+await p.waitForTimeout(100);
+ck(await p.isHidden('#claude-panel'), 'the panel closes');
+await p.keyboard.press('Control+.');
+await p.waitForTimeout(150);
+ck(await p.isVisible('#claude-panel'), 'Ctrl+. opens the Claude panel');
+await p.keyboard.press('Control+.');
+await p.waitForTimeout(100);
+ck(await p.isHidden('#claude-panel'), 'Ctrl+. again closes it');
 
 await p.screenshot({ path: 'shot-phone.png' });
 

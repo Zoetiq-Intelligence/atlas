@@ -27,7 +27,9 @@ export class NetError extends Error {
  *
  * @param {string} path   absolute URL, or a path appended to SUPABASE_URL
  * @param {object} opts
- *   method, body (auto-JSON), headers, auth (default true), prefer, retryOn401
+ *   method, body (auto-JSON), headers, auth (default true), prefer, retryOn401,
+ *   schema — the Postgres schema to address (default DB_SCHEMA, i.e. `notes`); null
+ *   addresses `public`, where Horizon's shared tables (feedback, horizon_triage) live
  */
 export async function request(path, opts = {}) {
   const {
@@ -38,6 +40,7 @@ export async function request(path, opts = {}) {
     prefer,
     retryOn401 = true,
     signal,
+    schema = DB_SCHEMA,
   } = opts;
 
   const url = path.startsWith('http') ? path : SUPABASE_URL + path;
@@ -51,9 +54,9 @@ export async function request(path, opts = {}) {
   // live in a dedicated `notes` Postgres schema rather than in `public`. PostgREST
   // selects a non-default schema by header: Accept-Profile on reads, Content-Profile
   // on writes. Both must be sent or a write silently targets `public` and 404s.
-  if (DB_SCHEMA && path.startsWith('/rest/')) {
-    if (method === 'GET' || method === 'HEAD') h['Accept-Profile'] = DB_SCHEMA;
-    else h['Content-Profile'] = DB_SCHEMA;
+  if (schema && path.startsWith('/rest/')) {
+    if (method === 'GET' || method === 'HEAD') h['Accept-Profile'] = schema;
+    else h['Content-Profile'] = schema;
   }
   if (body !== undefined && !h['Content-Type']) h['Content-Type'] = 'application/json';
   if (prefer) h['Prefer'] = prefer;

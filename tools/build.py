@@ -26,6 +26,9 @@ PREFIX = 'notes'
 SKIP_DIRS = {'test', 'node_modules', '.git'}
 SKIP_FILES = {'sw.js', 'sw.template.js', '.DS_Store'}
 SKIP_EXT = {'.md', '.mjs', '.py'}
+# app.test.mjs writes shot-*.png into notes/ (git-ignored, never deployed). Precaching one
+# makes the worker's addAll() 404 on the device, so the update never installs.
+SKIP_PREFIX = ('shot-',)
 
 
 def collect():
@@ -33,7 +36,8 @@ def collect():
     for root, dirs, files in os.walk(APP):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith('.')]
         for f in sorted(files):
-            if f.startswith('.') or f in SKIP_FILES or os.path.splitext(f)[1] in SKIP_EXT:
+            if (f.startswith('.') or f.startswith(SKIP_PREFIX) or f in SKIP_FILES
+                    or os.path.splitext(f)[1] in SKIP_EXT):
                 continue
             rel = os.path.relpath(os.path.join(root, f), APP).replace(os.sep, '/')
             out.append('./' + rel)

@@ -100,5 +100,21 @@ eq(/refused/.test(refused), true, 'a block coerce() would rewrite is refused, no
 try { jsonToDoc('{"atlas":"something-else"}'); refused = ''; } catch (e) { refused = e.message; }
 eq(/not an Atlas note/.test(refused), true, 'a JSON file that is not a note is refused');
 
+// --- merge.js: the module the phone's Merge panel and tools/merge-notes.mjs share ---
+const M = await import('../js/model/merge.js');
+eq(M.unmark(['', 'New Day (OLD)', 'x']).join('|'), '|New Day|x', 'unmark drops the app\'s own (OLD) from the title line');
+eq(M.unmark(['New Day', 'line (OLD)']).join('|'), 'New Day|line (OLD)', 'unmark touches only the first non-blank line');
+const mo = ['Today', '', 'dream', 'attic room with friends', 'awkward three way call'];
+const mn = ['New Day', '', 'dream', 'attic room with friends', 'awkward three way call', 'gym'];
+const r1 = M.mergeNotes(mo, mn);
+eq(r1.ok, true, 'a merge that keeps every line is ok');
+eq(r1.title, 'New Day', 'the merge is titled by the newer note');
+eq(r1.doc.blocks.filter(b => b.text === 'attic room with friends').length, 1, 'a copied run appears once');
+const r2 = M.mergeNotes(mo, mn, { title: 'Merged' });
+eq(r2.title, 'Merged', 'a chosen title leads the merge');
+eq(r2.doc.blocks.some(b => b.text === 'New Day'), true, 'and the old first line stays below it, so renaming loses nothing');
+const lost = M.prove([['kept line', 'a line that is gone']], newDoc([newBlock('p', 'kept line')]));
+eq(lost.missing.length, 1, 'the proof names a line the merge would lose');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

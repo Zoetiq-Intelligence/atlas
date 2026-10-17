@@ -7,6 +7,11 @@
 // Lives in the slide-over next to Backups rather than in the command registry: it is
 // a note-management action like "new note", not a way of controlling input, so the
 // three-way parity rule does not apply to it.
+//
+// Two ways in, one proof: files (the .txt export), and PASTE (2026-10-17) — on the
+// phone, "select all, copy" in iOS Notes and paste here is the whole import, with no
+// file to export and find. A paste is plain text, so it goes through textToDoc and is
+// held to the same character-for-character check as a file.
 
 import { textToDoc, jsonToDoc, isNoteFile } from '../model/import.js';
 
@@ -23,8 +28,9 @@ export function createImporter(root, { onImport } = {}) {
   document.body.appendChild(picker);
 
   let files = [];
+  let pasting = false;
 
-  function close() { root.hidden = true; root.innerHTML = ''; picker.value = ''; }
+  function close() { root.hidden = true; root.innerHTML = ''; picker.value = ''; pasting = false; }
 
   async function render() {
     root.hidden = false;
@@ -35,6 +41,9 @@ export function createImporter(root, { onImport } = {}) {
       <label style="display:block;font-size:13px;margin:0 0 4px" for="im-sfx">Add to every title</label>
       <input id="im-sfx" type="text" autocomplete="off" placeholder="e.g. (OLD)"
              style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-size:16px">
+      ${pasting ? `<label style="display:block;font-size:13px;margin:12px 0 4px" for="im-paste">Paste the note's text</label>
+      <textarea id="im-paste" rows="8" autocomplete="off" spellcheck="false" placeholder="In iOS Notes: Select All, Copy, then paste here"
+        style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font:inherit;font-size:16px;resize:vertical"></textarea>` : ''}
       <div id="im-list" style="margin:12px 0"></div>
       <div id="im-msg" role="status" style="font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -47,11 +56,16 @@ export function createImporter(root, { onImport } = {}) {
     const msg = root.querySelector('#im-msg');
     const go = root.querySelector('#im-go');
 
-    const texts = await Promise.all(files.map(f => f.text()));
+    const pasteEl = root.querySelector('#im-paste');
+    let texts = pasting ? [] : await Promise.all(files.map(f => f.text()));
 
     // The preview is computed by the same function that will do the import, so what
     // is shown is what will be stored — including a refusal, before anything is saved.
     const preview = () => {
+      if (pasting) {
+        texts = pasteEl.value ? [pasteEl.value] : [];
+        files = texts.map(() => ({ name: 'pasted.txt' }));
+      }
       list.textContent = '';
       let ok = true;
       texts.forEach((t, i) => {
@@ -75,6 +89,7 @@ export function createImporter(root, { onImport } = {}) {
       go.textContent = `Import ${texts.length} note${texts.length === 1 ? '' : 's'}`;
     };
     sfx.addEventListener('input', preview);
+    if (pasteEl) { pasteEl.addEventListener('input', preview); setTimeout(() => pasteEl.focus(), 50); }
     preview();
 
     go.onclick = async () => {
@@ -102,6 +117,8 @@ export function createImporter(root, { onImport } = {}) {
   return {
     /** Open the system file picker. Must be called from a user gesture. */
     pick() { picker.click(); },
+    /** Open the panel with a text box to paste into, instead of files. */
+    paste() { pasting = true; files = []; render(); },
     close,
   };
 }

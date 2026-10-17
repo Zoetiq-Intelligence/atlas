@@ -99,6 +99,9 @@
       <button id="build" type="button" class="quiet" title="Tap 5 times for diagnostics">build …</button>
       <button id="backups" type="button" class="quiet" title="Snapshots and revert">Backups</button>
       <button id="import" type="button" class="quiet" title="Bring in .txt files as notes">Import</button>
+      <button id="paste" type="button" class="quiet" title="Paste a note's text in as a new note">Paste</button>
+      <button id="merge" type="button" class="quiet" title="Merge two notes into a new one, losing nothing">Merge</button>
+      <button id="claude" type="button" class="quiet" title="Send a request to Claude (Ctrl+.)">Claude</button>
       <button id="signout" type="button" class="quiet">Sign out</button>
     </div>
   </aside>
@@ -158,6 +161,8 @@
 <div id="diag" hidden></div>
 <div id="backups-panel" hidden></div>
 <div id="import-panel" hidden></div>
+<div id="merge-panel" hidden></div>
+<div id="claude-panel" hidden></div>
 
 <script type="module" src="./js/main.js"></script>
 <script src="./update.js" defer></script>
