@@ -200,3 +200,34 @@ suppression there is settled.
 - **Q3.** The keyboard-up layout was deferred from v0 and then largely delivered in v1.5 via `visualViewport`. Nobody has confirmed whether it now meets the original spec — footer mid-screen above the keyboard, active text pinned to the top. **Needs the device; only the operator can answer.**
 - **The device truth kit has never been run.** Five taps on the build id in the sidebar. No report has ever been pasted back. `ONESHOT-WEBAPP.md` §0 says no layout claim should be trusted without one, and every layout claim in this project is currently Chromium's opinion.
 - **`BOARD.md` is fiction on one row.** The attached project doc describes "Omicron Alpha" as a shipped MV3 extension with a gateway, Supabase schema, dashboard and 27 passing tests, while the board still lists the Edge extension as *"not started."* Either that project moved far past what the board records, or it is a fifth project the board has never heard of. **Raised 2026-09-13; never answered. Ask again.**
+
+---
+
+## Review 2026-10-17: open calls for Gianni (not built)
+
+A full review (editor, app shell, data layer, tools) shipped every safe fix in commits 4b1a16d, f00c47e and e2cc3a8.
+These are left for a decision because each one changes how something looks or behaves:
+
+- **Touch targets under 44 px:** topbar buttons (34×30), the per-row ◀ ▶ buttons, Claude chips (32 px), backup row
+  buttons (36 px), checkboxes (18 px).
+- **Sign out has no confirmation.** It sits in the same row as Claude, and getting back in needs a new email code.
+- **Claude panel:** keep an unsent draft when the panel closes, and warn instead of silently cutting a request over
+  8,000 characters.
+- **Typing at the edge of a bold word:** the footer says bold, the model stores plain, and paste treats it as bold.
+  One rule is needed.
+- **Pasted lines are always body text,** even inside a list or code block. Enter on an empty quote or code block never
+  leaves it.
+- **Code blocks keep spellcheck and iOS autocorrect,** so smart quotes can corrupt code.
+- **Lists:** nested numbered items continue the parent's numbering. Outdenting a parent leaves its children two levels
+  deeper. Tab outside a list is swallowed.
+- **A note that ends in a newer build's block** has no way to add a line after it.
+- **Links** can't be opened from a note, and the URL scheme isn't checked.
+- **Cache prefix `notes-`** is generic on the shared github.io origin. Renaming it to `atlas-notes-` needs a one-time
+  cleanup.
+- **Sync conflicts:** write the server's `updated_at` back after a save, so last-write-wins compares server time with
+  server time. Show rejected edits instead of dropping them silently.
+- **Scale and tabs, not urgent yet:**
+  - pulls page past 1,000 notes (6 today);
+  - refresh-token rotation across two open tabs;
+  - undo snapshots as strings, to halve memory on a 7,500-line note;
+  - a full re-render on every Enter.
