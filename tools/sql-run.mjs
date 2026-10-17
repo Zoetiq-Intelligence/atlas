@@ -14,21 +14,24 @@
 //
 // ⚠ A note-push .sql holds private note text. Keep it outside the repo: atlas is PUBLIC.
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { query } from './note-pull.mjs';
+import { insideRepo, readText } from './guard.mjs';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
+// Strict arguments: a mistyped --readonly must not quietly run the SQL as a write.
 const args = process.argv.slice(2);
-const file = args.find(a => !a.startsWith('--'));
+const files = args.filter(a => !a.startsWith('--'));
+const unknown = args.filter(a => a.startsWith('--') && a !== '--read-only');
 const readOnly = args.includes('--read-only');
-if (!file) { console.error('usage: node tools/sql-run.mjs <file.sql> [--read-only]'); process.exit(2); }
-if (resolve(file).toLowerCase().startsWith(resolve(here, '..').toLowerCase())) {
+if (unknown.length || files.length !== 1) {
+  console.error('usage: node tools/sql-run.mjs <file.sql> [--read-only]' + (unknown.length ? '   (unknown: ' + unknown.join(' ') + ')' : ''));
+  process.exit(2);
+}
+const file = files[0];
+if (insideRepo(file)) {
   console.error('refusing: the .sql is inside the repo, and atlas is PUBLIC — move it out first');
   process.exit(2);
 }
 try {
-  const rows = await query(readFileSync(file, 'utf8'), { readOnly });
+  const rows = await query(readText(file), { readOnly });
   console.log(JSON.stringify(rows, null, 1).slice(0, 4000));
 } catch (e) { console.error(e.message); process.exit(1); }

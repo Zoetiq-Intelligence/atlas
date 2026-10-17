@@ -26,12 +26,12 @@
 // ⚠ The .sql contains the operator's private notes. Never write it inside the repo:
 // atlas is PUBLIC. Same for the input files.
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
+import { insideRepo, readText } from './guard.mjs';
 
 // ------------------------------------------------------------------ encoding
 
@@ -176,7 +176,7 @@ select case when (select count(*) from ins) = 1 then 'inserted'
 // ------------------------------------------------------------------ main
 
 function readNote(path) {
-  const raw = readFileSync(path, 'utf8');
+  const raw = readText(path);
   if (/\.json$/i.test(path)) {
     const j = JSON.parse(raw);
     return { title: j.title, blocks: j.doc.blocks };
@@ -195,7 +195,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error('usage: node tools/note-push.mjs <note.atlasnote.json|.txt> <out.sql> --user <uuid> [K=<source file>@<note id|title>]...');
     process.exit(2);
   }
-  if (resolve(out).startsWith(resolve(here, '..'))) {
+  if (insideRepo(out)) {
     console.error('refusing: out.sql is inside the repo, and atlas is PUBLIC');
     process.exit(2);
   }
@@ -203,7 +203,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const sources = {}, refs = {};
   for (const a of srcArgs) {
     const m = a.match(/^(\w+)=(.+?)@(.+)$/);
-    if (!m || m[1] === '=') { console.error('bad source:', a); process.exit(2); }
+    if (!m) { console.error('bad source:', a); process.exit(2); }
+    if (m[1] in sources) { console.error('source key used twice:', m[1]); process.exit(2); }
     sources[m[1]] = readNote(m[2]).blocks.map(b => b.text || '');
     refs[m[1]] = m[3];
   }

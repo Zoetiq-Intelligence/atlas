@@ -21,17 +21,15 @@
 // The rules (how the two notes relate, copied-run dedup, list formatting, the coverage
 // proof) live in notes/js/model/merge.js, shared with the app's Merge panel.
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Relative specifiers, not join(here, …): on Windows an absolute path is not a valid
 // import URL ("Received protocol 'f:'").
 import { newDoc } from '../notes/js/model/doc.js';
 import { splitLines, textToDoc } from '../notes/js/model/import.js';
 import { mergeLines as merge, toBlocks, prove, roundTrips, counts as countOf } from '../notes/js/model/merge.js';
-
-const here = fileURLToPath(new URL('.', import.meta.url));
+import { insideRepo, readText } from './guard.mjs';
 
 // ------------------------------------------------------------------ main
 
@@ -40,13 +38,13 @@ if (!olderPath || !newerPath || !outDir) {
   console.error('usage: node tools/merge-notes.mjs <older.txt> <newer.txt> <out-dir>');
   process.exit(2);
 }
-if (resolve(outDir).startsWith(resolve(here, '..'))) {
+if (insideRepo(outDir)) {
   console.error('refusing: out-dir is inside the repo, and atlas is PUBLIC');
   process.exit(2);
 }
 
-const olderText = readFileSync(olderPath, 'utf8');
-const newerText = readFileSync(newerPath, 'utf8');
+const olderText = readText(olderPath);
+const newerText = readText(newerPath);
 const older = splitLines(olderText), newer = splitLines(newerText);
 
 const oldA = textToDoc(olderText, { suffix: '(OLD)' });
@@ -69,11 +67,15 @@ console.log(`round trip through coerce(): ${rt ? 'unchanged' : 'CHANGED'}`);
 if (proof.missing.length || !rt) { console.error('\nNOT WRITTEN — the merge would lose text.'); process.exit(1); }
 
 mkdirSync(outDir, { recursive: true });
+const used = new Set();
 const write = (title, doc) => {
-  const f = join(outDir, title.replace(/[\\/:*?"<>|]/g, '').trim() + '.atlasnote.json');
+  let name = title.replace(/[\\/:*?"<>|\x00-\x1f]/g, '').trim() || 'untitled';
+  for (let n = 2; used.has(name.toLowerCase()); n++) name = name.replace(/ -\d+$/, '') + ' -' + n;
+  used.add(name.toLowerCase());
+  const f = join(outDir, name + '.atlasnote.json');
   writeFileSync(f, JSON.stringify({ atlas: 'note', v: 1, title, doc }));
   console.log('wrote', f);
 };
 write(oldA.title, oldA.doc);
 write(oldB.title, oldB.doc);
-write(merged.blocks.find(b => b.text.trim()).text.trim(), merged);
+write((merged.blocks.find(b => b.text.trim())?.text || 'Merged').trim(), merged);

@@ -26,8 +26,8 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { coerce, plainText } from '../notes/js/model/doc.js';
+import { insideRepo } from './guard.mjs';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
 export const PROJECT = 'ymcewqdxtfxskyuizlqx';      // Supabase "personal"; never WORK
 const CONF = process.env.ATLAS_SUPABASE_MGMT || 'F:/marital/generation/LocalGen/gateway_state/supabase_mgmt.json';
 
@@ -40,6 +40,7 @@ export async function query(sql, { readOnly = true } = {}) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: sql, read_only: readOnly }),
+    signal: AbortSignal.timeout(120000),   // a hung request must not hang the tool
   });
   const body = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${body.slice(0, 500)}`);
@@ -47,7 +48,10 @@ export async function query(sql, { readOnly = true } = {}) {
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const fileName = title => (String(title || 'untitled').replace(/[\\/:*?"<>|]/g, '').trim() || 'untitled');
+export const fileName = title => {
+  const s = String(title || 'untitled').replace(/[\\/:*?"<>|\x00-\x1f]/g, '').replace(/[. ]+$/, '').trim() || 'untitled';
+  return /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(s) ? '_' + s : s;
+};
 
 /** One note row → the two files' contents. Exported for the test. */
 export function toFiles(row) {
@@ -62,12 +66,13 @@ export function toFiles(row) {
 }
 
 async function main() {
-  const [outDir, ...ids] = process.argv.slice(2);
+  const [outDir, ...given] = process.argv.slice(2);
+  const ids = [...new Set(given)];
   if (!outDir || !ids.length) {
     console.error('usage: node tools/note-pull.mjs <out-dir> <note id>...');
     process.exit(2);
   }
-  if (resolve(outDir).toLowerCase().startsWith(resolve(here, '..').toLowerCase())) {
+  if (insideRepo(outDir)) {
     console.error('refusing: out-dir is inside the repo, and atlas is PUBLIC');
     process.exit(2);
   }
@@ -82,13 +87,17 @@ async function main() {
   } catch (e) { console.error(e.message); process.exit(1); }
 
   mkdirSync(outDir, { recursive: true });
+  const used = new Set();              // two notes with one title must not overwrite each other
   for (const id of ids) {
     const row = rows.find(r => r.id === id);
     if (!row) { console.log(`${id}  MISSING`); continue; }
-    const f = toFiles(row), base = join(outDir, fileName(row.title));
+    let name = fileName(row.title);
+    if (used.has(name.toLowerCase())) name += ' ' + id.slice(0, 8);
+    used.add(name.toLowerCase());
+    const f = toFiles(row), base = join(outDir, name);
     writeFileSync(base + '.txt', f.txt);
     writeFileSync(base + '.atlasnote.json', f.json);
-    console.log(`${id}  ${row.title}  ${f.lines} lines  md5 ${f.md5}${row.deleted_at ? '  (in Recently Deleted)' : ''}`);
+    console.log(`${id}  ${row.title}  ${f.lines} lines  md5 ${f.md5}  -> ${name}${row.deleted_at ? '  (in Recently Deleted)' : ''}`);
   }
   if (rows.length < ids.length) process.exitCode = 1;
 }
