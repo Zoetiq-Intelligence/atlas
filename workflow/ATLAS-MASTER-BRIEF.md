@@ -1,7 +1,20 @@
 # Atlas Master: the brief (from Horizon, 2026-10-13)
 
 Gianni is promoting Atlas to a Master thread on the Workstation: **"Atlas Master"**, folder `F:\atlas`
-(repo Zoetiq-Intelligence/atlas). Read this first, then `workflow/HANDOFF-MASTER.md`, `RESUME.md` and the notes code.
+(repo Zoetiq-Intelligence/atlas). Read this first, then, in order (all three handoffs landed by 2026-10-17):
+1. `workflow/HANDOFF.md` (Atlas Core / Workbench handoff) and `workflow/MERGE-PLAN.md` (draft; 9 conflicts for Gianni)
+2. `workflow/imports/atlas-notes-handoff.md` (Notes: what's live, data model, sign-in, 322 tests, open items) and
+   `tools/note-push.mjs`
+3. `workflow/imports/nexa-notes-ideas.md` (64 UI ideas)
+4. Your triage history: 81 of Gianni's messages from the three old sessions are filed as `atlas` records (retro).
+   Notes wins conflicts. None of Gianni's notes ever go in the repo.
+
+Open at handoff (from Atlas Notes): import "🥤Today (OLD)" and build the merged "☀️🌞⛅️ New Day" (§6); merge in what he
+added to iOS New Day since 10-13 once all three are usable (§6b); drop the leftover `notes._import_lines` (holds note
+text); the backups SQL (`workflow/_protocol/SETUP-BACKUP.sql`) only after asking Gianni; next build = the style loop
+(§7.3).
+
+Older background: `workflow/HANDOFF-MASTER.md`, `RESUME.md` and the notes code.
 
 ## What Atlas becomes
 
