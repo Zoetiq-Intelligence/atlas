@@ -15,7 +15,7 @@ import {
   setType, indent as indentBlock, toggleMark, hasMarkOver, marksAt,
   reconcileText, insertText, clone, newDoc, titleOf,
 } from '../model/doc.js';
-import { BLOCK_TYPES, LIST_TYPES } from '../model/schema.js';
+import { BLOCK_TYPES, LIST_TYPES, isOpaque } from '../model/schema.js';
 import { renderDoc, renderBlock, rowFor } from './render.js';
 import { getSel, setSel, activeTxt, rowOf } from './caret.js';
 
@@ -197,10 +197,12 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
 
     if ((e.key === 'ArrowLeft' && atStart) || (e.key === 'ArrowUp' && atStart) ||
         (e.key === 'ArrowUp' && onFirstLine(txt))) {
-      if (i > 0) {
+      let j = i - 1;
+      while (j >= 0 && isOpaque(doc.blocks[j])) j--;          // read-only rows are stepped over
+      if (j >= 0) {
         e.preventDefault();
         syncFromDom(txt);
-        const prev = doc.blocks[i - 1];
+        const prev = doc.blocks[j];
         const t = txtFor(prev.id);
         if (t) { t.focus({ preventScroll: true }); setSel(t, prev.text.length); scrollCaretIntoView(t); }
       }
@@ -208,10 +210,12 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     }
     if ((e.key === 'ArrowRight' && atEnd) || (e.key === 'ArrowDown' && atEnd) ||
         (e.key === 'ArrowDown' && onLastLine(txt))) {
-      if (i < doc.blocks.length - 1) {
+      let j = i + 1;
+      while (j < doc.blocks.length && isOpaque(doc.blocks[j])) j++;
+      if (j < doc.blocks.length) {
         e.preventDefault();
         syncFromDom(txt);
-        const next = doc.blocks[i + 1];
+        const next = doc.blocks[j];
         const t = txtFor(next.id);
         if (t) { t.focus({ preventScroll: true }); setSel(t, 0); scrollCaretIntoView(t); }
       }

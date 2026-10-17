@@ -34,4 +34,12 @@ export const MARK_TYPES = {
 export const LIST_TYPES = new Set(['li', 'ol', 'check']);
 
 export function isBlockType(t) { return Object.hasOwn(BLOCK_TYPES, t); }
+
+/**
+ * A block of a type this build does not know (a drawing written by a newer client, say).
+ * It is kept OPAQUE: stored, synced and saved back exactly as it came, shown read-only,
+ * never edited, retyped or merged into. Without this an older client would flatten a
+ * newer block to text on its next save, and the newer content would be gone for good.
+ */
+export function isOpaque(b) { return !!b && typeof b.t === 'string' && b.t !== '' && !isBlockType(b.t); }
 export function isMarkType(t) { return Object.hasOwn(MARK_TYPES, t); }

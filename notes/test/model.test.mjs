@@ -45,7 +45,24 @@ d=newDoc([newBlock('p','x')]); setType(d,d.blocks[0].id,'li'); eq(d.blocks[0].t,
 setType(d,d.blocks[0].id,'li'); eq(d.blocks[0].t,'p','toggle off');
 
 // coerce garbage
-eq(coerce(null).blocks.length,1,'coerce null'); eq(coerce({blocks:[{t:'bogus',text:'q'}]}).blocks[0].t,'p','coerce bad type');
+eq(coerce(null).blocks.length,1,'coerce null'); eq(coerce({blocks:[{text:'q'}]}).blocks[0].t,'p','coerce: a block with no type is body text');
+
+// Forward compatibility: a block type this build does not know (a newer client's drawing)
+// is kept whole, so saving the note here can never destroy it.
+{
+  const drawing = { id: 'dr', t: 'drawing', strokes: [[1, 2, 3]], w: 320, take: 'B' };
+  const c = coerce({ v: 1, blocks: [{ id: 'a', t: 'p', text: 'before', marks: [] }, drawing, { id: 'c', t: 'p', text: 'after', marks: [] }] });
+  eq(c.blocks[1].t, 'drawing', 'coerce keeps an unknown block type');
+  eq([c.blocks[1].strokes, c.blocks[1].w, c.blocks[1].take], [[[1, 2, 3]], 320, 'B'], 'and every field it carried');
+  eq(c.blocks[1].text, '', 'it gains an empty text so every reader of a doc still works');
+  eq(coerce(JSON.parse(JSON.stringify(c))).blocks[1], c.blocks[1], 'a second load changes nothing');
+  eq(mergeBackward(c, 'c'), null, 'Backspace at the start of the next line does not merge into it');
+  eq(c.blocks.length, 3, 'and the doc is unchanged');
+  eq(mergeForward(c, 'a'), null, 'Delete at the end of the line before does not pull it up');
+  eq(mergeBackward(c, 'dr'), null, 'it cannot itself be merged');
+  setType(c, 'dr', 'h1');
+  eq(c.blocks[1].t, 'drawing', 'nor retyped');
+}
 eq(titleOf(newDoc([newBlock('p','  '),newBlock('p','Real')])),'Real','title skips blank');
 
 // --- import: not one character lost ----------------------------------------
@@ -95,8 +112,10 @@ eq(isNoteFile('x.atlasnote.json', ''), true, 'recognised by extension');
 eq(isNoteFile('x.txt', '{"atlas":"note"'), true, 'and by content, whatever the name');
 eq(isNoteFile('x.txt', 'plain words'), false, 'plain text is not mistaken for a note file');
 let refused = '';
-try { jsonToDoc(nf([{ id: 'z', t: 'bogus', text: 'q', marks: [] }])); } catch (e) { refused = e.message; }
-eq(/refused/.test(refused), true, 'a block coerce() would rewrite is refused, not silently changed');
+try { jsonToDoc(nf([{ id: 'z', t: 'p', text: 5, marks: [] }])); } catch (e) { refused = e.message; }
+eq(/refused/.test(refused), true, 'a block coerce() would drop is refused, not silently lost');
+eq(jsonToDoc(nf([{ id: 'z', t: 'p', text: 'Title', marks: [] }, { id: 'y', t: 'drawing', text: '', strokes: [] }])).doc.blocks[1].t,
+   'drawing', 'a note file from a newer build imports with its unknown blocks intact');
 try { jsonToDoc('{"atlas":"something-else"}'); refused = ''; } catch (e) { refused = e.message; }
 eq(/not an Atlas note/.test(refused), true, 'a JSON file that is not a note is refused');
 

@@ -13,7 +13,7 @@
 // normalised after every mutation: sorted, merged when adjacent and identical,
 // and dropped when empty.
 
-import { DOC_VERSION, BLOCK_TYPES, LIST_TYPES } from './schema.js';
+import { DOC_VERSION, BLOCK_TYPES, LIST_TYPES, isOpaque } from './schema.js';
 
 let counter = 0;
 export function uid() {
@@ -209,6 +209,7 @@ export function mergeBackward(doc, blockId) {
   const i = indexOf(doc, blockId);
   if (i < 0) return null;
   const b = doc.blocks[i];
+  if (isOpaque(b) || (i > 0 && isOpaque(doc.blocks[i - 1]) && b.t === 'p')) return null;
 
   if (LIST_TYPES.has(b.t) && (b.depth || 0) > 0) {
     b.depth -= 1;
@@ -241,6 +242,7 @@ export function mergeForward(doc, blockId) {
   if (i < 0 || i === doc.blocks.length - 1) return null;
   const b = doc.blocks[i];
   const next = doc.blocks[i + 1];
+  if (isOpaque(b) || isOpaque(next)) return null;
   const at = b.text.length;
   const shifted = (next.marks || []).map(m => {
     const out = [m[0] + at, m[1] + at, m[2]];
@@ -255,7 +257,7 @@ export function mergeForward(doc, blockId) {
 
 export function setType(doc, blockId, t) {
   const b = blockById(doc, blockId);
-  if (!b) return;
+  if (!b || isOpaque(b)) return;
   // toggling a list type off returns to body — matches the footer being a set
   // of toggles rather than a menu
   b.t = b.t === t ? 'p' : t;
@@ -330,8 +332,12 @@ export function clone(doc) {
 export function coerce(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.blocks)) return newDoc();
   const blocks = raw.blocks
-    .filter(b => b && typeof b.text === 'string')
-    .map(b => ({
+    // Forward compatibility: a block type this build does not know is kept whole, every
+    // field as stored, so saving a note never destroys what a newer client wrote. It only
+    // gains a text string when it had none, because every reader of a doc (search,
+    // titles, plain text) reads one.
+    .filter(b => b && typeof b === 'object' && (isOpaque(b) || typeof b.text === 'string'))
+    .map(b => isOpaque(b) ? { ...b, id: b.id || uid(), text: typeof b.text === 'string' ? b.text : '' } : ({
       id: b.id || uid(),
       t: BLOCK_TYPES[b.t] ? b.t : 'p',
       text: b.text,

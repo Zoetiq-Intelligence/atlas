@@ -100,3 +100,6 @@
   letter-spacing: -.02em;
   margin: 0 0 .15em;
 }
+
+/* A block from a newer build (schema.js isOpaque): visible, read-only, unmistakably so. */
+.row.opaque .txt { color: var(--ink-3); font-style: italic; cursor: default; user-select: none; }

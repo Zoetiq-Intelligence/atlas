@@ -620,7 +620,10 @@ await p.waitForTimeout(800);   // onRestored pulls and reloads
 // "we need the ability to do the import and merge w/ Claude all on the phone".
 // Every Horizon call goes to the stub above; no test ever reaches the real feedback
 // table, where a row would become a real record and wake a real thread.
-const openList = async () => { await p.click('#topbar > [data-act="list"]'); await p.waitForTimeout(320); };
+const openList = async () => {
+  if (await p.locator('#sidebar.open').count()) return;      // already open from the step before
+  await p.click('#topbar > [data-act="list"]'); await p.waitForTimeout(320);
+};
 const pasteNote = async (text, sfx) => {
   await openList();
   await p.click('#paste');
@@ -717,6 +720,39 @@ ck(await p.isVisible('#claude-panel'), 'Ctrl+. opens the Claude panel');
 await p.keyboard.press('Control+.');
 await p.waitForTimeout(100);
 ck(await p.isHidden('#claude-panel'), 'Ctrl+. again closes it');
+
+// --- forward compatibility: a block from a newer build survives an edit here --------
+// coerce() used to flatten unknown block types to text, so an older client saving a note
+// destroyed what a newer one wrote (the blocker for Drawings). Now it is kept, shown
+// read-only, and saved back exactly.
+const FUTURE = JSON.stringify({ atlas: 'note', v: 1, title: 'Future', doc: { v: 1, blocks: [
+  { id: 'f1', t: 'p', text: 'Future note', marks: [] },
+  { id: 'f2', t: 'drawing', text: 'a sketch', strokes: [[0, 0, 5, 5]], take: 'B' },
+  { id: 'f3', t: 'p', text: 'after the sketch', marks: [] },
+] } });
+await openList();
+const [chooser3] = await Promise.all([p.waitForEvent('filechooser'), p.click('#import')]);
+await chooser3.setFiles({ name: 'Future.atlasnote.json', mimeType: 'application/json', buffer: Buffer.from(FUTURE, 'utf8') });
+await p.waitForSelector('#import-panel:not([hidden]) .im-row', { timeout: 4000 });
+ck((await p.locator('#import-panel .im-row').textContent()).includes('verified lossless'),
+   'a note with a block type this build does not know still imports');
+await p.click('#im-go');
+await p.waitForTimeout(1500);
+const opaque = p.locator('.row.opaque[data-t="drawing"] .txt').first();
+ck(await opaque.count() === 1 && (await opaque.getAttribute('contenteditable')) === 'false',
+   'the unknown block shows read-only');
+const after = p.locator('.row .txt', { hasText: 'after the sketch' }).first();
+await after.click();
+await p.keyboard.press('End');
+await p.keyboard.type(' edited');
+await p.waitForTimeout(1800);
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(900);
+const fut = notes.find(n => n.title === 'Future note');
+const fb2 = fut && fut.doc.blocks.find(b => b.id === 'f2');
+ck(fut && fut.doc.blocks.some(b => b.text === 'after the sketch edited'), 'the edit around it saved');
+ck(fb2 && fb2.t === 'drawing' && JSON.stringify(fb2.strokes) === '[[0,0,5,5]]' && fb2.take === 'B',
+   'and the unknown block went back to the server exactly as it came: ' + JSON.stringify(fb2));
 
 await p.screenshot({ path: 'shot-phone.png' });
 

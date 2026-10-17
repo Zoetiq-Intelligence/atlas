@@ -1,6 +1,6 @@
 // render.js — model to DOM. The only module that builds editor markup.
 
-import { BLOCK_TYPES, LIST_TYPES } from '../model/schema.js';
+import { BLOCK_TYPES, LIST_TYPES, isOpaque } from '../model/schema.js';
 
 const CHECK_SVG = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3 4.6 9 10 3"/></svg>';
 
@@ -55,6 +55,18 @@ export function renderBlock(block, isFirst) {
   row.dataset.t = block.t;
   if (LIST_TYPES.has(block.t)) row.dataset.depth = String(block.depth || 0);
   if (block.t === 'check') row.dataset.done = block.done ? '1' : '0';
+
+  // A block from a newer build: shown, never editable, so nothing here can rewrite it.
+  if (isOpaque(block)) {
+    row.classList.add('opaque');
+    const txt = document.createElement('div');
+    txt.className = 'txt';
+    txt.contentEditable = 'false';
+    txt.title = 'Made by a newer version of Notes. Update to edit it.';
+    txt.textContent = block.text || '(' + block.t + ')';
+    row.appendChild(txt);
+    return row;
+  }
 
   if (block.t === 'check') {
     const chk = document.createElement('button');
