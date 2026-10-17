@@ -80,15 +80,46 @@ Gianni's real data.** Run the full suite before every push, because every push r
 |---|---|
 | `☀️🌞⛅️ New Day (OLD)` | **in Supabase**, id `de3c5c83-5565-4a24-bdd6-1b0bfb4504b0`, 1,970 blocks, verified exact (text md5 `5641350c4d98618a35784debd45a6d7c`) |
 | `🥤Today (OLD)` | **waiting on Gianni**: import `🥤Today (OLD).atlasnote.json` with the sidebar's Import button (the file was sent to him on 10-13; bottom of the notes list: build · Backups · **Import** · Sign out). 5,585 blocks |
-| `☀️🌞⛅️ New Day` (the merge) | **ready, one call**: 7,544 blocks built in Postgres from the two OLD notes (`tools/note-push.mjs`; fingerprint `b471567b7e535a09f97c625fcf53e82b`). Tested on a local Postgres: exact match, under 1 s, a rerun refuses instead of duplicating, and it refuses while Today (OLD) is missing |
+| `☀️🌞⛅️ New Day` (the merge) | **Atlas Master builds it** (Gianni, 10-17: "the new session will handle hte merge"). The Notes session proved the method: 7,544 blocks built in Postgres from the two OLD notes by one `tools/note-push.mjs` call (fingerprint `b471567b7e535a09f97c625fcf53e82b`). Tested on a local Postgres: exact match, under 1 s, a rerun refuses instead of duplicating, and it refuses while Today (OLD) is missing |
 
-The input files and the generated SQL are in the Notes session's scratchpad, **never in the repo** (atlas is public).
-If Atlas Master takes this over, regenerate:
-`node tools/merge-notes.mjs today.txt newday.txt <out-dir>` then
-`node tools/note-push.mjs "<out>/☀️🌞⛅️ New Day.atlasnote.json" out.sql --user <uuid> "N=<New Day (OLD) file>@de3c5c83-…" "O=<Today (OLD) file>@🥤Today (OLD)"`
-and run `out.sql` with the Supabase connector's `execute_sql`.
+**Source files:** the original .txt files aren't in the repo, and this session's scratchpad dies with it. Gianni
+will copy his notes out of iOS Notes again when needed (10-17: *"I can always copy paste the files from iOS notes
+again now that we have a pipeline established, dont worry about that"*). Keep them out of the repo (atlas is
+public; both tools refuse an out-dir inside it). Then:
+
+```
+node tools/merge-notes.mjs today.txt newday.txt <out-dir>        # coverage proof, or nothing is written
+node tools/note-push.mjs "<out-dir>/☀️🌞⛅️ New Day.atlasnote.json" out.sql --user <uuid> \
+  "N=<out-dir>/☀️🌞⛅️ New Day (OLD).atlasnote.json@de3c5c83-5565-4a24-bdd6-1b0bfb4504b0" \
+  "O=<out-dir>/🥤Today (OLD).atlasnote.json@🥤Today (OLD)"
+```
+
+and run `out.sql` with the Supabase connector's `execute_sql`. The result says `inserted` or why it refused.
+A source file given to `note-push.mjs` must match its stored note exactly. A fresh iOS export of New Day won't match the
+10-13 `New Day (OLD)` row, so the fingerprint refuses, safely. Either import the fresh export as its own note and
+reference that, or point `N=` at a file whose text is the stored row.
 
 ⚠ Today contains a work login line. Don't repeat it anywhere.
+
+### 6b. Then: bring in what Gianni has added on iOS since 10-13
+
+Gianni, 10-17: *"once everything is perfectly usable on my phone and PC, we will even merge in new stuff that I've
+since added to my New Day note on iOS Notes."* He's still writing in iOS New Day until the cut-over, so expect at
+least one more export. Order:
+
+1. **First** the three notes above, perfectly usable on phone and PC.
+2. Gianni exports the current iOS New Day to .txt and imports it with the Import button, so the text comes from his
+   device, not through Claude. Suggested title suffix: `(OLD 2)` or a date, but ask him.
+3. Find what's new: diff the fresh export against `New Day (OLD)`. It's newest-at-top, so the new lines are mostly a
+   block at the top, but he also edits older lines in place. Use `merge-notes.mjs`'s copied-run matching
+   (MIN_RUN 3, containment for extended lines), not a plain line diff.
+4. Add only the new lines to the merged `☀️🌞⛅️ New Day`, at the top, formatted by the same list rules. Lines he
+   extended in iOS replace their shorter versions, like the merge's "upgrade" rule. Push it with `note-push.mjs`:
+   everything already stored travels as references, so the call stays small.
+5. ⚠ **Decide with Gianni before step 4:** if he has edited the merged note in Atlas by then, regenerating it from
+   scratch would lose those edits. Then step 4 must patch the merged note in place, never rebuild it. Proving that
+   nothing is lost (merge-notes' coverage proof) applies to both sources and to his Atlas edits.
+6. Repeat until his last iOS export, then he stops using iOS Notes for this sequence.
 
 ## 7. The fast note-editing process (Gianni: "we have ot build it pretty much immediatley")
 
@@ -114,7 +145,8 @@ hand-verified chunks. Rules that fix it:
 
 ## 8. Roadmap (in order)
 
-1. Today (OLD) imported → run the merge call → Gianni checks all three on the phone.
+1. Today (OLD) imported → Atlas Master builds the merge (§6) → Gianni checks all three on phone and PC → bring in
+   his newer iOS New Day lines (§6b), repeating until the cut-over.
 2. Drop `notes._import_lines`. Install the backup SQL (needs his yes).
 3. The style loop (§7.3), then the later ask: **every Today/Daily note merged into one long sequence, then split by
    category** (message 19). `merge-notes.mjs` generalises to N notes; the copied-run dedup is the part to keep.
@@ -155,6 +187,7 @@ hand-verified chunks. Rules that fix it:
 - *"in the future we will go back through all of my "Today/Daily/similar" notes and merge them into one long sequence before working on splitting things up by category."*
 - *"can you directly put them into supabase? none of my notes should be in the repo anyways"*: partly.
 - *"we will need to build a better process for you directly editing notes FAST so we can work on styles, apply them to everything, see how it looks, change stuff, etc. before it's built into the Notes system as an automation in hardcode/no LLM necessary"*: push built, style loop not.
+- *"once everything is perfectly usable on my phone and PC, we will even merge in new stuff that I've since added to my New Day note on iOS Notes."*: see §6b.
 - Standing rule (10-15): *"When I ask a question, even if you're in the middle of a process, you need to immediately respond without much thinking, and then continue what you're doing."*
 
 ## Gianni's messages
@@ -396,3 +429,33 @@ No reason; desktop import syncs to the phone.
 > okay, im in the desktop version, what do I do? I don't see an import tool anywhere
 
 Pointed to the Import link at the bottom of the notes list (build · Backups · Import · Sign out).
+
+### 34. 2026-10-15 22:13: **done**
+
+> Ah, I see the input button. Now link me info button. Now link me in the downloads again and then we can verify this.
+
+Re-sent 🥤Today (OLD).atlasnote.json. As of 10-17 it had not reached Supabase; the import moves to Atlas Master.
+
+### 35. 2026-10-17 15:06: **done**
+
+> okay, now what do we need to handoff to the new Atlas MAster thread
+
+Listed what was left and gave a paste-ready message for Atlas Master pointing at the handoff files.
+
+### 36. 2026-10-17 16:29: **open**
+
+> the new session will handle hte merge; and once everything is perfectly usable on my phone and PC, we will even merge in new stuff that I've since added to my New Day note on iOS Notes.
+
+Handoff updated: Atlas Master builds the merge (§6, including how to recover the source text from Supabase), then brings in the newer iOS New Day lines (§6b) until the cut-over.
+
+### 37. 2026-10-17 16:29: **done**
+
+> do you need to ajdust hte handoff for that?
+
+Yes. Adjusted §6, §6b, the roadmap and §10, and added these messages.
+
+### 38. 2026-10-17 16:30: **done**
+
+> I can always copy paste the files from iOS notes again now that we have a pipeline established, dont worry about that
+
+Handoff §6 now says Gianni re-exports from iOS Notes when needed, instead of recovering the text from Supabase.
