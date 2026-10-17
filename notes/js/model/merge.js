@@ -33,16 +33,11 @@ export const MIN_CONTAIN = 12;     // shortest line allowed to match by containm
 // ------------------------------------------------------------------ matching
 
 const norm = s => s.trim();
-const same = (a, b) => {
-  const x = norm(a), y = norm(b);
-  if (!x || !y) return false;
-  if (x === y) return true;
-  if (Math.min(x.length, y.length) < MIN_CONTAIN) return false;
-  return x.includes(y) || y.includes(x);
-};
 
-/** Non-blank lines with their original indices. */
-const solid = lines => lines.map((t, i) => ({ t, i })).filter(x => x.t.trim());
+/** Non-blank lines with their original indices, trimmed once (the matching is |O|×|N|). */
+const solid = lines => lines.map((t, i) => ({ t, i, n: t.trim() })).filter(x => x.n);
+/** Two trimmed, non-blank lines match if equal, or if one contains the other and both are long enough. */
+const sameN = (x, y) => x === y || (Math.min(x.length, y.length) >= MIN_CONTAIN && (x.includes(y) || y.includes(x)));
 
 /**
  * Greedy longest-run cover of `older` by `newer`, both as non-blank sequences.
@@ -51,17 +46,21 @@ const solid = lines => lines.map((t, i) => ({ t, i })).filter(x => x.t.trim());
 function copiedRuns(older, newer) {
   const O = solid(older), N = solid(newer);
   const pairs = [];
+  // A line of the newer note can stand for ONE copied line of the older note. Without
+  // this, a routine repeated under several days in the older note was removed every
+  // time it matched the single copy in the newer one, and those days lost their lines.
+  const used = new Uint8Array(N.length);
   let i = 0;
   while (i < O.length) {
     let best = 0, bestJ = -1;
     for (let j = 0; j < N.length; j++) {
-      if (!same(O[i].t, N[j].t)) continue;
+      if (used[j] || !sameN(O[i].n, N[j].n)) continue;
       let k = 0;
-      while (i + k < O.length && j + k < N.length && same(O[i + k].t, N[j + k].t)) k++;
+      while (i + k < O.length && j + k < N.length && !used[j + k] && sameN(O[i + k].n, N[j + k].n)) k++;
       if (k > best) { best = k; bestJ = j; }
     }
     if (best >= MIN_RUN) {
-      for (let k = 0; k < best; k++) pairs.push([O[i + k].i, N[bestJ + k].i]);
+      for (let k = 0; k < best; k++) { pairs.push([O[i + k].i, N[bestJ + k].i]); used[bestJ + k] = 1; }
       i += best;
     } else i++;
   }

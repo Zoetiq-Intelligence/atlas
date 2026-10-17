@@ -25,8 +25,15 @@ function open() {
       if (!db.objectStoreNames.contains(FOLDERS)) db.createObjectStore(FOLDERS, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(OUTBOX)) db.createObjectStore(OUTBOX, { keyPath: 'id' });
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    // A failed or lost connection must not be cached forever: iOS can drop the IndexedDB
+    // server connection, and every later transaction would throw until a reload.
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onclose = () => { dbp = null; };
+      db.onversionchange = () => { db.close(); dbp = null; };
+      resolve(db);
+    };
+    req.onerror = () => { dbp = null; reject(req.error); };
   });
   return dbp;
 }

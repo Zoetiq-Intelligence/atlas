@@ -161,7 +161,9 @@
   var armed = false;
 
   function onControllerChange() {
-    if (!hadController) return;                    // first claim: not an update
+    // First claim: not an update. Later ones are, even in a session that started with
+    // no worker (a first install, or straight after /reset/), which used to never update.
+    if (!hadController) { hadController = true; return; }
     if (handoverAsked) { doReload(); return; }     // we asked, and we were idle
     if (armed) return;
     armed = true;
@@ -201,7 +203,7 @@
     if (!('caches' in window)) return Promise.resolve(null);
     return caches.keys().then(function (keys) {
       var mine = keys.filter(function (k) { return k.indexOf(CACHE_PREFIX + '-') === 0; });
-      return mine.length ? mine.sort().pop() : null;
+      return mine.length ? mine[0] : null;   // creation order: the running cache is the oldest
     })['catch'](function () { return null; });
   };
 
@@ -245,12 +247,12 @@
       updateViaCache: 'none'   // GUIDE §7.3 — takes the host's max-age out of the conversation
     }).then(function (reg) {
       registration = reg;
-      if (reg.waiting && hadController) reloadWhenIdle();
+      if (reg.waiting && navigator.serviceWorker.controller) reloadWhenIdle();
       reg.addEventListener('updatefound', function () {
         var sw = reg.installing;
         if (!sw) return;
         sw.addEventListener('statechange', function () {
-          if (sw.state === 'installed' && hadController) reloadWhenIdle();
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) reloadWhenIdle();
         });
       });
       document.addEventListener('visibilitychange', onResume);

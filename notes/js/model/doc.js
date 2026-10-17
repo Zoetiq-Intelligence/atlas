@@ -44,7 +44,7 @@ export function blockById(doc, blockId) {
 export function titleOf(doc) {
   for (const b of doc.blocks) {
     const t = (b.text || '').trim();
-    if (t) return t.slice(0, 120);
+    if (t) { const s = t.slice(0, 120); return /[\uD800-\uDBFF]$/.test(s) ? s.slice(0, -1) : s; }
   }
   return '';
 }
@@ -61,23 +61,25 @@ export function plainText(doc) {
 function normalise(marks, textLen) {
   const out = [];
   for (let m of marks) {
+    // one malformed mark (from a tool, an import, another client) must not stop the
+    // whole note list rendering: skip it
+    if (!Array.isArray(m) || !Number.isFinite(m[0]) || !Number.isFinite(m[1]) || typeof m[2] !== 'string') continue;
     let [a, b, t, v] = m;
     a = Math.max(0, Math.min(a, textLen));
     b = Math.max(0, Math.min(b, textLen));
     if (b <= a) continue;
     out.push(v === undefined ? [a, b, t] : [a, b, t, v]);
   }
-  out.sort((x, y) => x[0] - y[0] || x[1] - y[1] || (x[2] < y[2] ? -1 : 1));
+  out.sort((x, y) => x[0] - y[0] || x[1] - y[1] || (x[2] < y[2] ? -1 : x[2] > y[2] ? 1 : 0));
 
-  // merge adjacent/overlapping ranges of the same type and value
-  const merged = [];
+  // merge adjacent/overlapping ranges of the same type and value, even when a mark of
+  // another type sits between them in sort order
+  const merged = [], lastBy = new Map();
   for (const m of out) {
-    const last = merged[merged.length - 1];
-    if (last && last[2] === m[2] && last[3] === m[3] && m[0] <= last[1]) {
-      last[1] = Math.max(last[1], m[1]);
-    } else {
-      merged.push(m.slice());
-    }
+    const k = m[2] + '\u0001' + (m[3] === undefined ? '' : String(m[3]));
+    const last = lastBy.get(k);
+    if (last && m[0] <= last[1]) last[1] = Math.max(last[1], m[1]);
+    else { const c = m.slice(); merged.push(c); lastBy.set(k, c); }
   }
   return merged;
 }
@@ -105,7 +107,7 @@ export function hasMarkOver(block, start, end, type) {
 
 /** Add or remove `type` across [start, end). Returns a new marks array. */
 export function toggleMark(block, start, end, type, value) {
-  if (start === end) return block.marks || [];
+  if (start === end || isOpaque(block)) return block.marks || [];
   const on = hasMarkOver(block, start, end, type);
   const kept = [];
   for (const m of block.marks || []) {
@@ -159,7 +161,7 @@ export function reconcileText(block, newText) {
 /** Split at `offset`. Returns the id of the new block to put the caret in. */
 export function splitBlock(doc, blockId, offset) {
   const i = indexOf(doc, blockId);
-  if (i < 0) return null;
+  if (i < 0 || isOpaque(doc.blocks[i])) return null;
   const b = doc.blocks[i];
 
   // Enter on an empty list item exits the list rather than making another one.
@@ -231,7 +233,7 @@ export function mergeBackward(doc, blockId) {
     return out;
   });
   prev.text += b.text;
-  prev.marks = normalise([...(prev.marks || []), ...shifted], prev.text.length);
+  prev.marks = BLOCK_TYPES[prev.t]?.plain ? [] : normalise([...(prev.marks || []), ...shifted], prev.text.length);
   doc.blocks.splice(i, 1);
   return { blockId: prev.id, offset: at };
 }
@@ -250,7 +252,7 @@ export function mergeForward(doc, blockId) {
     return out;
   });
   b.text += next.text;
-  b.marks = normalise([...(b.marks || []), ...shifted], b.text.length);
+  b.marks = BLOCK_TYPES[b.t]?.plain ? [] : normalise([...(b.marks || []), ...shifted], b.text.length);
   doc.blocks.splice(i + 1, 1);
   return { blockId: b.id, offset: at };
 }
@@ -268,13 +270,15 @@ export function setType(doc, blockId, t) {
   if (BLOCK_TYPES[b.t]?.plain) b.marks = [];
 }
 
+const MAX_DEPTH = 3;   // editor.css indents depths 1–3; deeper would snap back to the margin
+
 export function indent(doc, blockId, dir) {
   const b = blockById(doc, blockId);
   if (!b || !LIST_TYPES.has(b.t)) return false;
   const i = indexOf(doc, blockId);
   const prev = doc.blocks[i - 1];
   const max = prev && LIST_TYPES.has(prev.t) ? (prev.depth || 0) + 1 : 0;
-  const next = Math.max(0, Math.min((b.depth || 0) + dir, max));
+  const next = Math.max(0, Math.min((b.depth || 0) + dir, max, MAX_DEPTH));
   if (next === b.depth) return false;
   b.depth = next;
   return true;
@@ -283,23 +287,21 @@ export function indent(doc, blockId, dir) {
 /** Insert text at a caret — used by paste, which we always control. */
 export function insertText(doc, blockId, offset, text) {
   const b = blockById(doc, blockId);
-  if (!b) return null;
+  if (!b || isOpaque(b)) return null;
   const lines = text.split(/\r\n|\r|\n/);
   if (lines.length === 1) {
     b.text = b.text.slice(0, offset) + text + b.text.slice(offset);
     b.marks = reconcileTextAfterInsert(b, offset, text.length);
     return { blockId, offset: offset + text.length };
   }
-  const tailId = splitBlock(doc, blockId, offset);
+  const tailId = b.text.length ? splitBlock(doc, blockId, offset) : blockId;
   const first = blockById(doc, blockId);
   first.text += lines[0];
-  let at = indexOf(doc, blockId);
-  let lastId = blockId;
-  for (let k = 1; k < lines.length; k++) {
-    const nb = newBlock(k === lines.length - 1 ? 'p' : 'p', lines[k]);
-    doc.blocks.splice(++at, 0, nb);
-    lastId = nb.id;
-  }
+  // built first and inserted once: one splice per line is O(lines × blocks) on a long note
+  const added = lines.slice(1).map(l => newBlock('p', l));
+  const at = indexOf(doc, blockId);
+  doc.blocks = doc.blocks.slice(0, at + 1).concat(added, doc.blocks.slice(at + 1));
+  const lastId = added.length ? added[added.length - 1].id : blockId;
   // fold the split tail back onto the final inserted line
   const tail = blockById(doc, tailId);
   if (tail && tailId !== blockId) {
@@ -324,6 +326,19 @@ function reconcileTextAfterInsert(block, offset, len) {
   return normalise(moved, block.text.length);
 }
 
+/** Delete [start, end) from a block's text, keeping every mark on the characters it covered. */
+export function cutRange(block, start, end) {
+  if (end <= start) return;
+  const len = end - start;
+  const map = pos => (pos <= start ? pos : pos >= end ? pos - len : start);
+  block.text = block.text.slice(0, start) + block.text.slice(end);
+  block.marks = normalise((block.marks || []).map(m => {
+    const out = [map(m[0]), map(m[1]), m[2]];
+    if (m[3] !== undefined) out.push(m[3]);
+    return out;
+  }), block.text.length);
+}
+
 export function clone(doc) {
   return JSON.parse(JSON.stringify(doc));
 }
@@ -331,14 +346,16 @@ export function clone(doc) {
 /** Tolerate anything the database hands back, including nulls and old shapes. */
 export function coerce(raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.blocks)) return newDoc();
+  const seen = new Set();
+  const idOf = b => { const id = typeof b.id === 'string' && b.id && !seen.has(b.id) ? b.id : uid(); seen.add(id); return id; };
   const blocks = raw.blocks
     // Forward compatibility: a block type this build does not know is kept whole, every
     // field as stored, so saving a note never destroys what a newer client wrote. It only
     // gains a text string when it had none, because every reader of a doc (search,
     // titles, plain text) reads one.
     .filter(b => b && typeof b === 'object' && (isOpaque(b) || typeof b.text === 'string'))
-    .map(b => isOpaque(b) ? { ...b, id: b.id || uid(), text: typeof b.text === 'string' ? b.text : '' } : ({
-      id: b.id || uid(),
+    .map(b => isOpaque(b) ? { ...b, id: idOf(b), text: typeof b.text === 'string' ? b.text : '' } : ({
+      id: idOf(b),
       t: BLOCK_TYPES[b.t] ? b.t : 'p',
       text: b.text,
       marks: normalise(Array.isArray(b.marks) ? b.marks : [], b.text.length),

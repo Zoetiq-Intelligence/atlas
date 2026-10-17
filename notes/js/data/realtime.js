@@ -28,6 +28,7 @@ let pendingHeartbeatRef = null;
 let lastToken = null;
 let stopped = true;
 let joined = false;
+let connecting = false;     // a connect() is awaiting its token
 
 let cfg = { getToken: async () => null, userId: () => null, onChange: () => {}, onState: () => {} };
 
@@ -74,14 +75,27 @@ function dropAndRetry(why) {
 const FATAL = /MalformedJWT|JwtSignatureError|Unauthorized|TenantNotFound|RealtimeDisabled|TopicNameRequired/;
 
 async function connect() {
+  // A foreground fires visibilitychange AND online together; both used to get past the
+  // readyState check while the token was being fetched, open two sockets, and orphan
+  // one with a live heartbeat interval that later killed healthy sockets.
+  if (stopped || connecting || (ws && ws.readyState <= 1)) return;
+  connecting = true;
+  let uid, token;
+  try {
+    uid = cfg.userId();
+    token = await cfg.getToken().catch(() => null);
+  } finally { connecting = false; }
   if (stopped || (ws && ws.readyState <= 1)) return;
-
-  const uid = cfg.userId();
-  const token = await cfg.getToken().catch(() => null);
   // A private channel needs a real user JWT. The publishable key is fine as the apikey
   // query param but is SILENTLY IGNORED as an access_token — it is not a JWT — so
   // without this we would join as anon and hear nothing, with no error anywhere.
-  if (!uid || !token) { setState('off', 'no session'); return; }
+  if (!uid || !token) {
+    setState('off', 'no session');
+    // signed in but the token could not be had just now: try again later, or a tab
+    // that stays visible for hours never gets live sync back
+    if (uid && !stopped) { clearTimeout(timers.retry); timers.retry = setTimeout(connect, BACKOFF[BACKOFF.length - 1]); }
+    return;
+  }
   lastToken = token;
 
   const url = `${SUPABASE_URL.replace(/^http/, 'ws')}/realtime/v1/websocket`

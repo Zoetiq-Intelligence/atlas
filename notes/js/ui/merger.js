@@ -44,9 +44,9 @@ export function createMerger(root, { getNotes, onCreate, onAsk }) {
       <input id="mg-title" class="mg-in" type="text" autocomplete="off">
       <div id="mg-out" role="status" style="font-size:13px;margin:12px 0;min-height:18px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button id="mg-go" class="go" style="flex:1 1 auto;min-height:44px" disabled>Create merged note</button>
-        <button id="mg-ask" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Ask Claude instead</button>
-        <button id="mg-close" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Cancel</button>
+        <button id="mg-go" type="button" class="go" style="flex:1 1 auto;min-height:44px" disabled>Create merged note</button>
+        <button id="mg-ask" type="button" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Ask Claude instead</button>
+        <button id="mg-close" type="button" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Cancel</button>
       </div>`;
 
     const $ = s => root.querySelector(s);
@@ -62,15 +62,16 @@ export function createMerger(root, { getNotes, onCreate, onAsk }) {
     // The merge is quadratic in lines (thousands × thousands on the first pair), so it
     // runs after a paint, and a newer run supersedes an older one still queued.
     function compute() {
+      if (!out.isConnected) return;            // the panel was closed while a title edit was pending
       const my = ++run;
-      result = null; go.disabled = true;
+      result = null; go.disabled = true; out.style.color = '';
       if (!titleTouched) title.value = defaultTitle();
       const a = byId(selNew.value), b = byId(selOld.value);
       if (!a || !b) { out.textContent = 'Pick two notes.'; return; }
       if (a.id === b.id) { out.textContent = 'Pick two different notes.'; return; }
       out.style.color = ''; out.textContent = 'Merging…';
       setTimeout(() => {
-        if (my !== run) return;
+        if (my !== run || !out.isConnected) return;
         const t0 = performance.now();
         const r = mergeNotes(linesOf(b), linesOf(a), { title: title.value });
         if (my !== run) return;
@@ -102,11 +103,12 @@ export function createMerger(root, { getNotes, onCreate, onAsk }) {
       catch (e) { out.style.color = 'var(--danger)'; out.textContent = 'Save failed: ' + (e.message || e); go.disabled = false; }
     };
     $('#mg-ask').onclick = () => {
+      clearTimeout(tt);
       const a = byId(selNew.value), b = byId(selOld.value);
       close();
       onAsk([a, b].filter(Boolean), `Merge these two notes into a new note titled "${title.value || defaultTitle()}". `);
     };
-    $('#mg-close').onclick = close;
+    $('#mg-close').onclick = () => { clearTimeout(tt); close(); };
     compute();
   }
 

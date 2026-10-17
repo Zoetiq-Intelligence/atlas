@@ -37,12 +37,14 @@ await p.addInitScript(() => {
 // Declared up here because the console filter below closes over it: the
 // "backend not installed" test deliberately provokes 404s, and those must not be
 // counted as page errors — while every OTHER unexpected 404 still is.
+let expect500 = false;      // the failed-poll test provokes one on purpose
 let snapshotMode = 'ok';     // 'ok' | 'missing' — 'missing' = the SQL was never run
 const errs=[];
 p.on('pageerror', e=>errs.push('pageerror: '+e));
 p.on('console', m=>{ if(m.type()!=='error') return;
   if(/favicon|status of 403/.test(m.text())) return;
   if(snapshotMode==='missing' && /status of 404/.test(m.text())) return;   // provoked on purpose
+  if(expect500 && /status of 500/.test(m.text())) return;
   errs.push('console: '+m.text()); });
 
 let restCalls = [];
@@ -50,8 +52,10 @@ let noteGets = [];
 let profileHeaders = [];
 let snapshots = [];          // newest first, like the real order=taken_at.desc
 let rpcCalls = [];
+let noteDelayMs = 0;         // hold note upserts in flight, to race a save against one
 let feedbackPosts = [];      // Horizon's public.feedback — NEVER the real one: this is the stub
 let triageRows = [];         // Horizon's public.horizon_triage, as the thread's replies land
+let triageFail = 0;          // answer the next N reads with a 500
 await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
   const u = new URL(route.request().url());
   const m = route.request().method();
@@ -78,6 +82,7 @@ await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
   if (u.pathname === '/rest/v1/note') {
     if (m === 'GET') noteGets.push(u.search);
     if (m === 'POST') {
+      if (noteDelayMs) await new Promise(r => setTimeout(r, noteDelayMs));
       const row = JSON.parse(route.request().postData() || '{}');
       row.updated_at = new Date().toISOString();
       const i = notes.findIndex(n => n.id === row.id);
@@ -127,6 +132,7 @@ await p.route('**/ymcewqdxtfxskyuizlqx.supabase.co/**', async route => {
     return route.fulfill({ status: 201, body: '' });      // return=minimal: no body, no SELECT policy
   }
   if (u.pathname === '/rest/v1/horizon_triage') {
+    if (triageFail > 0) { triageFail--; return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' }); }
     const ask = u.searchParams.get('ref->>ask_id');
     const rows = ask && ask.startsWith('eq.') ? triageRows.filter(r => r.ref.ask_id === ask.slice(3)) : triageRows;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
@@ -721,6 +727,36 @@ await p.keyboard.press('Control+.');
 await p.waitForTimeout(100);
 ck(await p.isHidden('#claude-panel'), 'Ctrl+. again closes it');
 
+// --- panel polish (2026-10-17 review) ------------------------------------------
+await p.keyboard.press('Control+.');
+await p.waitForSelector('#claude-panel:not([hidden]) #cl-hist .cl-a', { timeout: 10000 });
+const sendBg = await p.evaluate(() => getComputedStyle(document.querySelector('#cl-send')).backgroundColor);
+ck(sendBg !== 'rgba(0, 0, 0, 0)' && sendBg !== 'transparent', 'a panel\'s main button is drawn as a button, got ' + sendBg);
+const pickFs = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#cl-notes select')).fontSize));
+ck(pickFs >= 16, 'the note picker is at least 16px, so iOS does not zoom on it: ' + pickFs);
+const a1 = await p.evaluateHandle(() => document.querySelector('#cl-hist .cl-a'));
+await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await p.waitForTimeout(400);
+ck(await p.evaluate(a => a.isConnected, a1), 'an unchanged poll leaves the reply in place, so a selection in it survives');
+triageFail = 1; expect500 = true;
+await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await p.waitForTimeout(400);
+ck(await p.locator('#cl-hist .cl-a').count() === 1, 'a failed poll keeps the replies on screen');
+expect500 = false;
+ck(/Couldn't refresh/.test(await p.locator('#cl-msg').textContent()), 'and says it could not refresh');
+await p.keyboard.press('Escape');
+await p.waitForTimeout(150);
+ck(await p.isHidden('#claude-panel'), 'Escape closes the Claude panel');
+await openList();
+await p.click('#merge');
+await p.waitForSelector('#merge-panel:not([hidden])', { timeout: 4000 });
+await p.keyboard.press('Escape');
+await p.waitForTimeout(150);
+ck(await p.isHidden('#merge-panel'), 'Escape closes the Merge panel');
+ck(await p.locator('#sidebar.open').count() === 1, 'and leaves the list underneath alone');
+await p.keyboard.press('Escape');
+await p.waitForTimeout(400);
+
 // --- forward compatibility: a block from a newer build survives an edit here --------
 // coerce() used to flatten unknown block types to text, so an older client saving a note
 // destroyed what a newer one wrote (the blocker for Drawings). Now it is kept, shown
@@ -753,6 +789,23 @@ const fb2 = fut && fut.doc.blocks.find(b => b.id === 'f2');
 ck(fut && fut.doc.blocks.some(b => b.text === 'after the sketch edited'), 'the edit around it saved');
 ck(fb2 && fb2.t === 'drawing' && JSON.stringify(fb2.strokes) === '[[0,0,5,5]]' && fb2.take === 'B',
    'and the unknown block went back to the server exactly as it came: ' + JSON.stringify(fb2));
+
+// --- an edit made while the previous save is still uploading is not lost --------
+// flush() used to delete the outbox entry by id after the upsert, taking the newer
+// entry a save had queued meanwhile with it; that edit never reached the server.
+noteDelayMs = 3000;
+await after.click();
+await p.keyboard.press('End');
+await p.keyboard.type(' A');
+await p.waitForTimeout(2200);              // saved locally, upsert now held in flight
+await p.keyboard.type('B');
+await p.waitForTimeout(4500);
+noteDelayMs = 0;
+await p.evaluate(() => window.dispatchEvent(new Event('online')));
+await p.waitForTimeout(2500);
+const raced = notes.find(n => n.title === 'Future note');
+ck(raced && raced.doc.blocks.some(b => b.text === 'after the sketch edited AB'),
+   'a save made during an upload still reaches the server: ' + JSON.stringify(raced && raced.doc.blocks.map(b => b.text)));
 
 await p.screenshot({ path: 'shot-phone.png' });
 

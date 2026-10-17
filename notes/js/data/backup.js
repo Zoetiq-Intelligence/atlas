@@ -93,7 +93,7 @@ export async function restore(id) {
 export async function due() {
   const last = await latestAt();
   if (!last) return true;
-  const t = Date.parse(last);
+  const t = Date.parse(String(last).replace(/(\.\d{3})\d+/, '$1'));   // microseconds: WebKit can't parse them
   if (!isFinite(t)) return true;
   return Date.now() - t >= INTERVAL_MS;
 }

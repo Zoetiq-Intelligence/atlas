@@ -13,7 +13,7 @@
 import {
   blockById, indexOf, splitBlock, mergeBackward, mergeForward,
   setType, indent as indentBlock, toggleMark, hasMarkOver, marksAt,
-  reconcileText, insertText, clone, newDoc, titleOf,
+  reconcileText, insertText, clone, newDoc, titleOf, cutRange,
 } from '../model/doc.js';
 import { BLOCK_TYPES, LIST_TYPES, isOpaque } from '../model/schema.js';
 import { renderDoc, renderBlock, rowFor } from './render.js';
@@ -21,6 +21,12 @@ import { getSel, setSel, activeTxt, rowOf } from './caret.js';
 
 const UNDO_COALESCE_MS = 600;
 const UNDO_MAX = 120;
+
+// Every way a browser asks to delete backwards / forwards. Holding Backspace on iOS
+// escalates to word deletes, and Alt/Cmd-Backspace send word and line deletes; at a
+// block edge they must merge the same way, or holding the key stops at every line.
+const BACK = new Set(['deleteContentBackward', 'deleteWordBackward', 'deleteSoftLineBackward', 'deleteHardLineBackward']);
+const FWD = new Set(['deleteContentForward', 'deleteWordForward', 'deleteSoftLineForward', 'deleteHardLineForward']);
 
 export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {}) {
   let doc = newDoc();
@@ -32,11 +38,13 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
 
   const txtFor = id => { const r = rowFor(el, id); return r ? r.querySelector('.txt') : null; };
 
-  function snapshot(force) {
+  function snapshot(force, before) {
     const now = Date.now();
     if (!force && now - lastSnap < UNDO_COALESCE_MS) return;
-    lastSnap = now;
-    undo.push(clone(doc));
+    // after a structural step the next keystroke starts its own undo step, so undoing
+    // the word typed after Enter does not undo the Enter too
+    lastSnap = force ? 0 : now;
+    undo.push(before || clone(doc));
     if (undo.length > UNDO_MAX) undo.shift();
     redo.length = 0;
   }
@@ -63,7 +71,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     const row = rowOf(txt);
     if (!row) return null;
     const b = blockById(doc, row.dataset.id);
-    if (!b) return null;
+    if (!b || isOpaque(b)) return null;      // a newer build's block is never written from the DOM
     const next = txt.textContent || '';
     if (next === b.text) return b;
     b.marks = reconcileText(b, next);
@@ -81,7 +89,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     if (!txt) return null;
     const row = rowOf(txt);
     const b = blockById(doc, row.dataset.id);
-    if (!b) return null;
+    if (!b || isOpaque(b)) return null;
     const sel = getSel(txt) || { start: 0, end: 0, collapsed: true };
     return { txt, row, b, sel };
   }
@@ -102,27 +110,28 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
       e.preventDefault();
       syncFromDom(txt);
       snapshot(true);
+      if (!sel.collapsed) cutRange(b, sel.start, sel.end);
       const newId = splitBlock(doc, b.id, sel.start);
       caret = { blockId: newId, offset: 0 };
       paint(); changed();
       return;
     }
 
-    if (it === 'deleteContentBackward' && sel.collapsed && sel.start === 0) {
+    if (BACK.has(it) && sel.collapsed && sel.start === 0) {
       e.preventDefault();
       syncFromDom(txt);
-      snapshot(true);
+      const before = clone(doc);
       const r = mergeBackward(doc, b.id);
-      if (r) { caret = r; paint(); changed(); }
+      if (r) { snapshot(true, before); caret = r; paint(); changed(); }
       return;
     }
 
-    if (it === 'deleteContentForward' && sel.collapsed && sel.start === b.text.length) {
+    if (FWD.has(it) && sel.collapsed && sel.start === b.text.length) {
       e.preventDefault();
       syncFromDom(txt);
-      snapshot(true);
+      const before = clone(doc);
       const r = mergeForward(doc, b.id);
-      if (r) { caret = r; paint(); changed(); }
+      if (r) { snapshot(true, before); caret = r; paint(); changed(); }
       return;
     }
 
@@ -138,10 +147,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
       syncFromDom(txt);
       snapshot(true);
       // a non-collapsed selection is replaced first
-      if (!sel.collapsed) {
-        b.text = b.text.slice(0, sel.start) + b.text.slice(sel.end);
-        b.marks = reconcileText({ ...b, text: b.text }, b.text);
-      }
+      if (!sel.collapsed) cutRange(b, sel.start, sel.end);
       const r = insertText(doc, b.id, sel.start, text);
       if (r) caret = r;
       paint(); changed();
@@ -161,6 +167,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
   // ---------------------------------------------------------------- keys
 
   el.addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;   // the IME owns these keys while composing
     const ctx = here();
     if (!ctx) return;
     const { txt, row, b, sel } = ctx;
@@ -170,8 +177,9 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
       e.preventDefault();
       if (!LIST_TYPES.has(b.t)) return;
       syncFromDom(txt);
-      snapshot(true);
+      const before = clone(doc);
       if (indentBlock(doc, b.id, e.shiftKey ? -1 : 1)) {
+        snapshot(true, before);
         caret = { blockId: b.id, offset: sel.start };
         paint(); changed();
       }
@@ -184,13 +192,15 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
       if (m) { e.preventDefault(); mark(m); return; }
       if (k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
       if (k === 'y') { e.preventDefault(); doRedo(); return; }
-      if (k === 'enter' || e.key === 'Enter') {
+      if (k === 'enter') {
         if (b.t === 'check') { e.preventDefault(); toggleDone(row); return; }
       }
     }
 
     // cross-block caret movement — blocks are separate contenteditables, so the
-    // browser stops at the boundary and we have to carry the caret over
+    // browser stops at the boundary and we have to carry the caret over. Not while
+    // extending a selection: one cannot span blocks, and jumping would drop it.
+    if (e.shiftKey) return;
     const i = indexOf(doc, b.id);
     const atStart = sel.collapsed && sel.start === 0;
     const atEnd = sel.collapsed && sel.start === b.text.length;
@@ -266,7 +276,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
 
   // ---------------------------------------------------------------- commands
 
-  function mark(type) {
+  function mark(type, value) {
     const ctx = here();
     if (!ctx) return;
     const { txt, b, sel } = ctx;
@@ -274,7 +284,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     syncFromDom(txt);
     if (sel.collapsed) return;           // v0: no pending-mark-at-caret
     snapshot(true);
-    b.marks = toggleMark(b, sel.start, sel.end, type);
+    b.marks = toggleMark(b, sel.start, sel.end, type, value);   // a link carries its URL
     caret = { blockId: b.id, offset: sel.end };
     const row = rowFor(el, b.id);
     const fresh = renderBlock(b, indexOf(doc, b.id) === 0);
@@ -301,25 +311,34 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     syncFromDom(ctx.txt);
     // indent only means something in a list; outside one, promote to a bullet
     if (!LIST_TYPES.has(ctx.b.t)) { if (dir > 0) block('li'); return; }
-    snapshot(true);
+    const before = clone(doc);
     if (indentBlock(doc, ctx.b.id, dir)) {
+      snapshot(true, before);
       caret = { blockId: ctx.b.id, offset: ctx.sel.start };
       paint(); changed();
     }
   }
 
+  function caretNow() {
+    const h = here();
+    return h ? { blockId: h.b.id, offset: h.sel.start } : caret;
+  }
   function doUndo() {
     if (!undo.length) return;
+    const at = caretNow();
     redo.push(clone(doc));
     doc = undo.pop();
     lastSnap = 0;
+    caret = at;
     paint(); changed();
   }
   function doRedo() {
     if (!redo.length) return;
+    const at = caretNow();
     undo.push(clone(doc));
     doc = redo.pop();
     lastSnap = 0;
+    caret = at;
     paint(); changed();
   }
 
@@ -345,7 +364,7 @@ export function createEditor(el, { onChange = () => {}, onFocus = () => {} } = {
     noteId: () => noteId,
     doc: () => doc,
     focus() {
-      const first = el.querySelector('.txt');
+      const first = el.querySelector('.txt[contenteditable="true"]');   // never a read-only block
       if (first) { first.focus({ preventScroll: true }); setSel(first, first.textContent.length); }
     },
     mark, block, nudge, undo: doUndo, redo: doRedo, state,

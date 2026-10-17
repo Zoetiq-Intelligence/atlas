@@ -6,20 +6,13 @@
 
 /** Model offset of a (node, offset) pair inside a .txt element. */
 export function offsetIn(txt, node, nodeOffset) {
-  if (node === txt) {
-    let n = 0;
-    for (let i = 0; i < nodeOffset && i < txt.childNodes.length; i++) {
-      n += (txt.childNodes[i].textContent || '').length;
-    }
-    return n;
-  }
-  const walk = document.createTreeWalker(txt, NodeFilter.SHOW_TEXT);
-  let acc = 0, t;
-  while ((t = walk.nextNode())) {
-    if (t === node) return acc + nodeOffset;
-    acc += t.nodeValue.length;
-  }
-  return acc;
+  // A Range measures every container shape alike: the .txt itself, a text node, or a
+  // mark <span> (a selection boundary at a mark's edge is often (span, n)). The old
+  // walk only knew the first two and returned the full length for a span.
+  const r = document.createRange();
+  r.selectNodeContents(txt);
+  try { r.setEnd(node, nodeOffset); } catch { return (txt.textContent || '').length; }
+  return r.toString().length;
 }
 
 /** Current selection as model offsets within `txt`, or null if it isn't there. */

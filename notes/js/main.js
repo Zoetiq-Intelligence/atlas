@@ -20,6 +20,7 @@ import { mount as mountBackups } from './ui/backups.js';
 import { createImporter } from './ui/importer.js';
 import { createMerger } from './ui/merger.js';
 import { createClaudePanel } from './ui/claude.js';
+import { attach as tip } from './ui/tooltip.js';
 import * as backup from './data/backup.js';
 
 const $ = s => document.querySelector(s);
@@ -155,8 +156,8 @@ async function startApp() {
   if (gaps.length) console.warn('[parity] incomplete:', gaps.map(g => `${g.cmd.id} (${g.missing.join(', ')})`));
 
   sidebar = createSidebar($('#sidebar'), $('#scrim'), {
-    // `pane` is undefined when the row itself was tapped (use the focused pane) and
-    // 0/1 when a destination was named by a button or a swipe.
+    // `pane` is 0/1 in practice: the list resolves a plain row tap to the pane it was
+    // opened for. The undefined branch is kept as a guard for any other caller.
     onOpen: async (id, pane) => {
       const target = pane === undefined ? focused : pane;
       await openInto(target, id);
@@ -216,12 +217,44 @@ async function startApp() {
   $('#merge').onclick = () => merger.open();
   $('#claude').onclick = () => claudePanel.open();
   // Ctrl+. (Cmd+. on a Mac): Horizon's feedback key, F1 of the Universal App Protocol.
+  // Closing puts the caret back where it was, so the key is a round trip, not a detour.
+  let back = null;
+  const restoreCaret = () => {
+    const t = back && back.startContainer.isConnected &&
+      (back.startContainer.nodeType === 1 ? back.startContainer : back.startContainer.parentElement)?.closest('.txt');
+    if (t) { t.focus({ preventScroll: true }); const s = getSelection(); s.removeAllRanges(); s.addRange(back); }
+    back = null;
+  };
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '.') {
       e.preventDefault();
-      if (claudePanel.isOpen) claudePanel.close(); else claudePanel.open();
+      if (!claudePanel.isOpen) {
+        const s = getSelection();
+        back = s.rangeCount ? s.getRangeAt(0).cloneRange() : null;
+        claudePanel.open();
+      } else { claudePanel.close(); restoreCaret(); }
     }
   });
+
+  // Escape closes the topmost panel through its own Close button, so each panel's own
+  // cleanup runs (the Claude panel's poll, the merge's timers). Capture phase, so the
+  // sidebar hidden underneath does not take the key instead.
+  const PANELS = ['#claude-panel', '#merge-panel', '#import-panel', '#backups-panel', '#diag'];
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || e.isComposing) return;
+    const open = PANELS.map(sel => $(sel)).find(el => el && !el.hidden);
+    const btn = open && open.querySelector('#cl-close, #mg-close, #im-close, #bk-close, #dg-close');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const wasClaude = open.id === 'claude-panel';
+    btn.click();
+    if (wasClaude) restoreCaret();
+  }, true);
+
+  // The house rule is an instant tooltip on every control; the static buttons in the
+  // page carried only the browser's slow native one, or none.
+  document.querySelectorAll('#sidebar button[title], #sidebar #new, #topbar button[aria-label]')
+    .forEach(b => tip(b, b.getAttribute('title') || b.getAttribute('aria-label')));
   backup.onState(s => {
     // A backup that cannot run must not be silent. It is the one feature whose whole
     // value is that it already happened by the time you need it, so a failure that

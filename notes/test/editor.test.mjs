@@ -119,6 +119,72 @@ const inFirst = await p.evaluate(() => {
 });
 ck(inFirst === 0, 'ArrowLeft at offset 0 moved to previous block, landed in row ' + inFirst);
 
+// --- 2026-10-17 review fixes ------------------------------------------------------
+const loadDoc = blocks => p.evaluate(bs => window.ed.load('t-' + Math.random(), { v: 1, blocks: bs }), blocks);
+const selectIn = (row, a, z) => p.evaluate(([row, a, z]) => {
+  const t = document.querySelectorAll('.row .txt')[row];
+  t.focus();
+  const walk = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+  const pts = []; let n, acc = 0;
+  while ((n = walk.nextNode())) { pts.push([n, acc]); acc += n.nodeValue.length; }
+  const at = off => { for (let i = pts.length - 1; i >= 0; i--) if (off >= pts[i][1]) return [pts[i][0], off - pts[i][1]]; };
+  const r = document.createRange(); r.setStart(...at(a)); r.setEnd(...at(z));
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+}, [row, a, z]);
+const rowOfCaret = () => p.evaluate(() => {
+  const n = getSelection().anchorNode; const el = n && (n.nodeType === 3 ? n.parentNode : n);
+  return [...document.querySelectorAll('.row')].indexOf(el && el.closest('.row'));
+});
+
+// paste over a selection keeps the marks on the characters that stay
+await loadDoc([{ id: 'a', t: 'p', text: 'hello world', marks: [[6, 11, 'b']] }]);
+await selectIn(0, 0, 6);
+await p.evaluate(() => {
+  const dt = new DataTransfer(); dt.setData('text/plain', 'X');
+  document.querySelector('.row .txt').dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', dataTransfer: dt, bubbles: true, cancelable: true }));
+});
+d = await doc();
+ck(d.blocks[0].text === 'Xworld' && JSON.stringify(d.blocks[0].marks) === '[[1,6,"b"]]',
+   'paste over a selection keeps "world" bold: ' + JSON.stringify(d.blocks[0]));
+
+// Enter replaces a selection
+await loadDoc([{ id: 'a', t: 'p', text: 'hello world', marks: [] }]);
+await selectIn(0, 6, 11);
+await p.keyboard.press('Enter');
+d = await doc();
+ck(JSON.stringify(d.blocks.map(x => x.text)) === '["hello ",""]', 'Enter with "world" selected replaces it: ' + JSON.stringify(d.blocks.map(x => x.text)));
+
+// undo leaves the caret where the edit was, not at the title
+await loadDoc(Array.from({ length: 30 }, (_, i) => ({ id: 'r' + i, t: 'p', text: 'line ' + i, marks: [] })));
+await p.click('.row:nth-child(21) .txt');
+await p.keyboard.press('End');
+await p.keyboard.type('z');
+await p.waitForTimeout(700);
+await p.keyboard.press('Control+z');
+await p.waitForTimeout(50);
+d = await doc();
+ck(d.blocks[20].text === 'line 20', 'undo removed the typed letter');
+ck(await rowOfCaret() === 20, 'and the caret stays in that line, got row ' + await rowOfCaret());
+
+// Shift+Arrow at a block edge keeps the selection inside the block
+await p.click('.row:nth-child(5) .txt');
+await p.keyboard.press('Home');
+await p.keyboard.press('Shift+ArrowLeft');
+ck(await rowOfCaret() === 4, 'Shift+ArrowLeft at the start of a line does not jump to the line above');
+
+// a key that changes nothing does not cost the redo stack
+await loadDoc([{ id: 'a', t: 'p', text: 'one', marks: [] }]);
+await p.click('.row .txt');
+await p.keyboard.press('End');
+await p.keyboard.type(' two');
+await p.waitForTimeout(700);
+await p.keyboard.press('Control+z');
+await p.keyboard.press('Home');
+await p.keyboard.press('Backspace');          // at the very start: nothing to merge into
+await p.keyboard.press('Control+Shift+z');
+d = await doc();
+ck(d.blocks[0].text === 'one two', 'Backspace at the start of a note leaves redo intact: ' + JSON.stringify(d.blocks[0].text));
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (errs.length) { console.log('\nPAGE ERRORS:'); errs.slice(0,8).forEach(e=>console.log(' ', e)); }
 await b.close();

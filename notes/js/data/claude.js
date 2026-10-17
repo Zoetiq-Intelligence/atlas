@@ -36,7 +36,10 @@ export async function send({ text, notes = [], kind = 'request', build = '', ema
   const trailer = notes.length
     ? '\n\n— notes —\n' + notes.map(n => `${n.id}  ${n.title || '(untitled)'}`).join('\n')
     : '';
-  const full = (body + trailer).slice(0, MAX);
+  // Cut the request, never the notes list the thread needs, and never inside an emoji:
+  // half a surrogate pair is invalid JSON to Postgres and fails the whole insert.
+  const room = MAX - Array.from(trailer).length;
+  const full = Array.from(body).slice(0, Math.max(0, room)).join('') + trailer;
   await request('/rest/v1/feedback', {
     method: 'POST',
     schema: null,

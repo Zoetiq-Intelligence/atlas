@@ -9,6 +9,7 @@
 // is the "Claude" button at the bottom of the notes list.
 
 import * as claude from '../data/claude.js';
+import { attach as tip } from './tooltip.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const POLL_MS = 8000;          // while the panel is open and visible; it is the only reader
@@ -22,16 +23,16 @@ const when = t => {
   const d = new Date(t * 1000);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
-const stateLabel = r => claude.settled(r) ? (r.state === 'done' ? 'done' : r.state)
+const stateLabel = r => claude.settled(r) ? r.state
   : r.reply ? 'replying' : r.state === 'new' ? 'sent' : 'working';
 // what the operator typed, without the attached-notes trailer send() adds
 const asked = v => String(v || '').split('\n\n— notes —\n')[0];
 
 export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail }) {
-  let timer = null, attached = [], pending = [];
+  let timer = null, attached = [], pending = [], lastHtml = '';
 
   function close() {
-    clearInterval(timer); timer = null;
+    clearInterval(timer); timer = null; lastHtml = '';
     document.removeEventListener('visibilitychange', onVis);
     root.hidden = true; root.innerHTML = '';
   }
@@ -42,7 +43,12 @@ export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail 
     if (!list) return;
     let rows;
     try { rows = await claude.history(); }
-    catch (e) { list.dataset.err = '1'; list.innerHTML = `<p style="color:var(--danger);font-size:13px">Couldn't load replies: ${esc(e.message || e)}</p>`; return; }
+    catch (e) {
+      const m = root.querySelector('#cl-msg');
+      if (list.childElementCount && m) { m.style.color = 'var(--danger)'; m.textContent = "Couldn't refresh replies: " + (e.message || e); }
+      else list.innerHTML = `<p style="color:var(--danger);font-size:13px">Couldn't load replies: ${esc(e.message || e)}</p>`;
+      return;
+    }
     // requests sent from here that Horizon hasn't filed yet (a few seconds) show as "sending"
     pending = pending.filter(p => !rows.some(r => r.ref && r.ref.ask_id === p.ask_id));
     const items = [
@@ -54,7 +60,8 @@ export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail 
         <div class="cl-q">${esc(asked(r.verbatim))}</div>
         ${r.reply ? `<div class="cl-a">${esc(r.reply)}</div>` : ''}</div>`),
     ];
-    list.innerHTML = items.join('') || '<p style="color:var(--ink-2);font-size:13px">Nothing sent yet.</p>';
+    const html = items.join('') || '<p style="color:var(--ink-2);font-size:13px">Nothing sent yet.</p>';
+    if (html !== lastHtml || !list.childElementCount) { list.innerHTML = html; lastHtml = html; }
   }
 
   function paintChips() {
@@ -63,8 +70,9 @@ export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail 
     attached.forEach((n, i) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'cl-chip';
-      b.textContent = (n.title || '(untitled)') + '  ×';
-      b.title = 'Remove';
+      b.innerHTML = '<span class="cl-ct"></span><span aria-hidden="true">&nbsp;×</span>';
+      b.firstChild.textContent = n.title || '(untitled)';
+      b.setAttribute('aria-label', 'Remove ' + (n.title || '(untitled)'));
       b.onclick = () => { attached.splice(i, 1); paintChips(); };
       box.appendChild(b);
     });
@@ -84,16 +92,16 @@ export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail 
     root.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;margin:0 0 4px">
         <h2 style="font-size:17px;margin:0;flex:1">Claude</h2>
-        <button id="cl-close" class="go" style="min-height:36px;padding:0 14px;background:var(--chrome);color:var(--ink)">Close</button>
+        <button id="cl-close" type="button" class="go" style="min-height:44px;padding:0 14px;background:var(--chrome);color:var(--ink)">Close</button>
       </div>
       <p style="font-size:13px;color:var(--ink-2);margin:0 0 10px">
         Goes to the Atlas Master thread on the Workstation. Replies show up here; changes to notes sync in.</p>
       <div id="cl-pre" style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px"></div>
-      <textarea id="cl-text" rows="5" placeholder="What should Claude do?"
+      <textarea id="cl-text" rows="5" placeholder="What should Claude do?" aria-label="Request to Claude"
         style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font:inherit;font-size:16px;resize:vertical"></textarea>
       <div id="cl-notes" style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0"></div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button id="cl-send" class="go" style="flex:1 1 auto;min-height:44px">Send to Claude</button>
+        <button id="cl-send" type="button" class="go" style="flex:1 1 auto;min-height:44px">Send to Claude</button>
       </div>
       <div id="cl-msg" role="status" style="font-size:13px;min-height:18px;margin:8px 0"></div>
       <div id="cl-hist"></div>`;
@@ -101,21 +109,28 @@ export function createClaudePanel(root, { getNotes, getOpen, getBuild, getEmail 
     const $ = s => root.querySelector(s);
     const ta = $('#cl-text'), msg = $('#cl-msg'), send = $('#cl-send');
     ta.value = text;
+    let preset = text;
     PRESETS.forEach(([label, t]) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'cl-chip'; b.textContent = label;
-      b.onclick = () => { ta.value = t + ta.value.replace(/^(?:Merge|Suggest|Reorganize)[^.]*\.\s*/, ''); ta.focus(); };
+      b.onclick = () => {
+        const rest = preset && ta.value.startsWith(preset) ? ta.value.slice(preset.length) : ta.value;
+        ta.value = t + rest; preset = t; ta.focus();
+      };
+      tip(b, t.trim());
       $('#cl-pre').appendChild(b);
     });
     paintChips();
 
     send.onclick = async () => {
+      const text = ta.value;
       send.disabled = true; msg.style.color = ''; msg.textContent = 'Sending…';
       try {
         const build = await Promise.resolve(getBuild()).catch(() => '');
-        const ask_id = await claude.send({ text: ta.value, notes: attached, build, email: getEmail() });
-        pending.unshift({ ask_id, text: ta.value.trim() });
-        ta.value = '';
+        const ask_id = await claude.send({ text, notes: attached, build, email: getEmail() });
+        pending.unshift({ ask_id, text: text.trim() });
+        if (ta.value === text) ta.value = '';
+        preset = '';
         msg.textContent = 'Sent. Claude usually picks it up within a minute.';
         refresh();
       } catch (e) {

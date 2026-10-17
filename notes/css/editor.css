@@ -72,7 +72,7 @@
   background: var(--accent);
   border-color: var(--accent);
 }
-.row[data-t="check"] > .chk svg { width: 11px; height: 11px; stroke: #fff; stroke-width: 2.6; fill: none; opacity: 0; }
+.row[data-t="check"] > .chk svg { width: 11px; height: 11px; stroke: var(--on-accent); stroke-width: 2.6; fill: none; opacity: 0; }
 .row[data-t="check"] > .chk[aria-pressed="true"] svg { opacity: 1; }
 .row[data-t="check"][data-done="1"] .txt { color: var(--ink-3); text-decoration: line-through; }
 
@@ -102,4 +102,11 @@
 }
 
 /* A block from a newer build (schema.js isOpaque): visible, read-only, unmistakably so. */
-.row.opaque .txt { color: var(--ink-3); font-style: italic; cursor: default; user-select: none; }
+.row.opaque .txt { color: var(--ink-3); font-style: italic; cursor: default; -webkit-user-select: none; user-select: none; }
+
+/* links: the mark has always been stored; it was never drawn */
+.m-link { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+
+/* the checkbox fills on the same 150 ms curve as everything else */
+.row[data-t="check"] > .chk { transition: background var(--dur) var(--ease-smoother), border-color var(--dur) var(--ease-smoother); }
+.row[data-t="check"] > .chk svg { transition: opacity var(--dur) var(--ease-smoother); }

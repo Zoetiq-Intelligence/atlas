@@ -103,8 +103,11 @@ async function doRefresh() {
     await persist(shape(raw));
     return session?.access_token || null;
   } catch (e) {
-    if (e.status === 400 || e.status === 401) await persist(null);   // truly dead
-    return null;
+    if (e.status === 400 || e.status === 401) { await persist(null); return null; }   // truly dead
+    // Offline, a 5xx, a rate limit: the refresh token is still good, so keep the session
+    // and let the caller retry. Returning null here used to sign the phone out, which
+    // costs a new email code.
+    throw e;
   }
 }
 

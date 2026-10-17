@@ -53,7 +53,7 @@ export function renderBlock(block, isFirst) {
   row.className = 'row';
   row.dataset.id = block.id;
   row.dataset.t = block.t;
-  if (LIST_TYPES.has(block.t)) row.dataset.depth = String(block.depth || 0);
+  if (LIST_TYPES.has(block.t)) row.dataset.depth = String(Math.min(block.depth || 0, 3));   // CSS styles 0–3
   if (block.t === 'check') row.dataset.done = block.done ? '1' : '0';
 
   // A block from a newer build: shown, never editable, so nothing here can rewrite it.
@@ -73,7 +73,7 @@ export function renderBlock(block, isFirst) {
     chk.className = 'chk';
     chk.type = 'button';
     chk.setAttribute('aria-pressed', block.done ? 'true' : 'false');
-    chk.setAttribute('aria-label', 'Toggle');
+    chk.setAttribute('aria-label', 'Done');
     chk.innerHTML = CHECK_SVG;
     row.appendChild(chk);
   }

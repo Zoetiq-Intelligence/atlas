@@ -19,6 +19,7 @@
 // a derived note that can be regenerated from this one as often as wanted.
 
 import { newDoc, newBlock, plainText, titleOf, coerce } from './doc.js';
+import { isOpaque } from './schema.js';
 
 /** The file's text exactly as lines, with terminators normalised and nothing else. */
 export function splitLines(text) {
@@ -75,14 +76,14 @@ export function jsonToDoc(text, { suffix = '' } = {}) {
     throw new Error('not an Atlas note file');
   }
   const doc = coerce(raw.doc);
-  const sig = d => d.blocks.map(b => [b.t, b.text, b.depth || 0, !!b.done].join('\u0001'));
+  const sig = d => d.blocks.map(b => (b ? [b.t, b.text, b.depth || 0, !!b.done].join('\u0001') : ''));
   const want = sig(raw.doc), got = sig(doc);
   if (want.length !== got.length || want.some((x, i) => x !== got[i])) {
     throw new Error('import would alter the note — refused');
   }
   const sfx = String(suffix || '').trim();
   if (sfx) {
-    const b = doc.blocks.find(x => (x.text || '').trim());
+    const b = doc.blocks.find(x => !isOpaque(x) && (x.text || '').trim());   // never rewrite a newer build's block
     if (b) b.text = b.text + ' ' + sfx;
   }
   return { doc, title: titleOf(doc), lines: doc.blocks.length, expected: plainText(doc) };

@@ -49,16 +49,19 @@ document.getElementById('go').onclick = async function () {
   try {
     // getRegistrations() returns the whole ORIGIN's workers, not just this page's
     // scope — which is exactly what lets a page outside the scope reach in.
-    var regs = await navigator.serviceWorker.getRegistrations();
+    // Only THIS repo's Notes worker: another repo on the same github.io origin can have a
+    // /notes/ scope of its own.
+    var mine = new URL('../notes/', location.href).href;
+    var regs = navigator.serviceWorker ? await navigator.serviceWorker.getRegistrations() : [];
     for (var i = 0; i < regs.length; i++) {
-      if ((regs[i].scope || '').indexOf('/notes/') !== -1) {
+      if (regs[i].scope === mine) {
         await regs[i].unregister();
         log('unregistered ' + regs[i].scope);
       }
     }
     // Delete by PREFIX only. This origin is shared with every other repo published
     // from the same account, so an unfiltered sweep is cross-project destruction.
-    var keys = await caches.keys();
+    var keys = window.caches ? await caches.keys() : [];
     for (var j = 0; j < keys.length; j++) {
       if (keys[j].indexOf('notes-') === 0) { await caches.delete(keys[j]); log('deleted cache ' + keys[j]); }
     }

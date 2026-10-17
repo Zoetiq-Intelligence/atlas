@@ -37,7 +37,7 @@ export function createImporter(root, { onImport } = {}) {
     root.innerHTML = `
       <h2 style="font-size:17px;margin:0 0 4px">Import</h2>
       <p style="font-size:13px;color:var(--ink-2);margin:0 0 10px">
-        Each file becomes one note, exactly as written — every line, blank line and tab.</p>
+        ${pasting ? 'The pasted text becomes one note' : 'Each file becomes one note'}, exactly as written — every line, blank line and tab.</p>
       <label style="display:block;font-size:13px;margin:0 0 4px" for="im-sfx">Add to every title</label>
       <input id="im-sfx" type="text" autocomplete="off" placeholder="e.g. (OLD)"
              style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font-size:16px">
@@ -47,8 +47,8 @@ export function createImporter(root, { onImport } = {}) {
       <div id="im-list" style="margin:12px 0"></div>
       <div id="im-msg" role="status" style="font-size:13px;min-height:18px;margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button id="im-go" class="go" style="flex:1 1 auto;min-height:44px">Import</button>
-        <button id="im-close" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Cancel</button>
+        <button id="im-go" type="button" class="go" style="flex:1 1 auto;min-height:44px">Import</button>
+        <button id="im-close" type="button" class="go" style="flex:1 1 auto;min-height:44px;background:var(--chrome);color:var(--ink)">Cancel</button>
       </div>`;
 
     const sfx = root.querySelector('#im-sfx');
@@ -64,7 +64,7 @@ export function createImporter(root, { onImport } = {}) {
     const preview = () => {
       if (pasting) {
         texts = pasteEl.value ? [pasteEl.value] : [];
-        files = texts.map(() => ({ name: 'pasted.txt' }));
+        files = texts.map(() => ({ name: 'pasted.txt', label: 'Pasted text' }));
       }
       list.textContent = '';
       let ok = true;
@@ -77,7 +77,7 @@ export function createImporter(root, { onImport } = {}) {
           row.innerHTML = '<b></b><br><span style="color:var(--ink-2)"></span>';
           row.querySelector('b').textContent = r.title || '(untitled)';
           row.querySelector('span').textContent =
-            `${files[i].name} · ${r.lines.toLocaleString()} lines · verified lossless`;
+            `${files[i].label || files[i].name} · ${r.lines.toLocaleString()} lines · verified lossless`;
         } catch (e) {
           ok = false;
           row.textContent = `${files[i].name} — ${e.message}`;
@@ -94,6 +94,7 @@ export function createImporter(root, { onImport } = {}) {
 
     go.onclick = async () => {
       go.disabled = true;
+      msg.style.color = '';
       msg.textContent = 'Importing…';
       try {
         const made = texts.map((t, i) => convert(files[i], t, sfx.value));

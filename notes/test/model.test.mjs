@@ -135,5 +135,56 @@ eq(r2.doc.blocks.some(b => b.text === 'New Day'), true, 'and the old first line 
 const lost = M.prove([['kept line', 'a line that is gone']], newDoc([newBlock('p', 'kept line')]));
 eq(lost.missing.length, 1, 'the proof names a line the merge would lose');
 
+// --- 2026-10-17 review fixes ------------------------------------------------------
+{
+  const D = await import('../js/model/doc.js');
+  // a malformed mark is skipped, not fatal for the whole note list
+  const bad = D.coerce({ v: 1, blocks: [{ id: 'm', t: 'p', text: 'hello', marks: [null, 'x', [0, 'a', 'b'], [0, 2, 'b']] }] });
+  eq(bad.blocks[0].marks, [[0, 2, 'b']], 'coerce skips malformed marks and keeps the good one');
+  // ids become unique strings, so the DOM can find every block
+  const ids = D.coerce({ v: 1, blocks: [{ id: 5, t: 'p', text: 'a' }, { id: 'x', t: 'p', text: 'b' }, { id: 'x', t: 'p', text: 'c' }] });
+  eq(ids.blocks.every(b => typeof b.id === 'string'), true, 'coerce makes every block id a string');
+  eq(new Set(ids.blocks.map(b => b.id)).size, 3, 'and every id unique');
+  eq(ids.blocks[1].id, 'x', 'the first holder of an id keeps it');
+  // same-type marks merge even with another mark between them in sort order
+  const nm = D.toggleMark({ text: 'abcdefgh', marks: [[0, 3, 'b'], [2, 5, 'i']] }, 3, 6, 'b');
+  eq(nm, [[0, 6, 'b'], [2, 5, 'i']], 'overlapping bold ranges merge across an italic');
+  // titles never end in half an emoji
+  const tt = D.titleOf(D.newDoc([D.newBlock('p', 'x'.repeat(119) + '😀 more')]));
+  eq(/[\uD800-\uDBFF]$/.test(tt), false, 'a title cut at 120 never ends inside an emoji');
+  // a newer build's block cannot be split, pasted into or marked
+  const op = { v: 1, blocks: [{ id: 'dr', t: 'drawing', text: 'sketch', strokes: [1] }] };
+  eq(D.splitBlock(op, 'dr', 2), null, 'splitBlock refuses an unknown block');
+  eq(D.insertText(op, 'dr', 2, 'a\nb'), null, 'insertText refuses it');
+  eq(D.toggleMark(op.blocks[0], 0, 3, 'b'), [], 'toggleMark leaves it unmarked');
+  eq([op.blocks.length, op.blocks[0].text], [1, 'sketch'], 'and it is untouched');
+  // a multi-line paste into an empty checklist item keeps the checklist item
+  const ck = D.newDoc([D.newBlock('check', '')]);
+  D.insertText(ck, ck.blocks[0].id, 0, 'milk\neggs');
+  eq(ck.blocks.map(b => [b.t, b.text]), [['check', 'milk'], ['p', 'eggs']], 'pasting lines into an empty checklist item keeps it a checklist item');
+  // merging a styled line into a code block brings no marks
+  const cd = D.newDoc([D.newBlock('code', 'x=1'), Object.assign(D.newBlock('p', 'bold'), { marks: [[0, 4, 'b']] })]);
+  D.mergeBackward(cd, cd.blocks[1].id);
+  eq(cd.blocks[0].marks, [], 'a code block takes no marks from a merged line');
+  // indentation stops at the deepest level the CSS draws
+  const li = D.newDoc([0, 1, 2, 3, 4].map(() => D.newBlock('li', 'x')));
+  for (let k = 1; k < 5; k++) for (let n = 0; n < 6; n++) D.indent(li, li.blocks[k].id, 1);
+  eq(Math.max(...li.blocks.map(b => b.depth)), 3, 'indent stops at depth 3');
+  // cutting a selection keeps marks on the characters they covered
+  const cut = { text: 'hello world', marks: [[6, 11, 'b']] };
+  D.cutRange(cut, 0, 6);
+  eq([cut.text, cut.marks], ['world', [[0, 5, 'b']]], 'cutRange keeps the bold on "world"');
+}
+{
+  const M = await import('../js/model/merge.js');
+  // a routine repeated under two days in the older note, copied once into the newer
+  const older = ['Mon', 'stretch for ten minutes', 'walk the dog around', 'make a big breakfast', '',
+                 'Tue', 'stretch for ten minutes', 'walk the dog around', 'make a big breakfast'];
+  const newer = ['Wed', 'stretch for ten minutes', 'walk the dog around', 'make a big breakfast'];
+  const r = M.mergeNotes(older, newer);
+  eq(r.doc.blocks.filter(b => b.text === 'walk the dog around').length, 2,
+     'one copy in the newer note stands for ONE older day: the other day keeps its routine');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);

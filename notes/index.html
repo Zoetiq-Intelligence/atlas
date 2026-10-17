@@ -87,7 +87,7 @@
         <button id="new" class="icon" type="button" aria-label="New note"></button>
       </div>
       <div id="dest" hidden></div>
-      <input id="search" type="search" placeholder="Search" autocomplete="off">
+      <input id="search" type="search" placeholder="Search" aria-label="Search notes" autocomplete="off">
       <div id="folders"></div>
     </div>
     <div id="list"></div>
@@ -102,7 +102,7 @@
       <button id="paste" type="button" class="quiet" title="Paste a note's text in as a new note">Paste</button>
       <button id="merge" type="button" class="quiet" title="Merge two notes into a new one, losing nothing">Merge</button>
       <button id="claude" type="button" class="quiet" title="Send a request to Claude (Ctrl+.)">Claude</button>
-      <button id="signout" type="button" class="quiet">Sign out</button>
+      <button id="signout" type="button" class="quiet" title="Sign out of this device">Sign out</button>
     </div>
   </aside>
 
@@ -158,11 +158,11 @@
      and positioned by transform like the tooltip. -->
 <div id="selmenu" hidden></div>
 
-<div id="diag" hidden></div>
-<div id="backups-panel" hidden></div>
-<div id="import-panel" hidden></div>
-<div id="merge-panel" hidden></div>
-<div id="claude-panel" hidden></div>
+<div id="diag" role="dialog" aria-modal="true" aria-label="Device truth" hidden></div>
+<div id="backups-panel" role="dialog" aria-modal="true" aria-label="Backups" hidden></div>
+<div id="import-panel" role="dialog" aria-modal="true" aria-label="Import" hidden></div>
+<div id="merge-panel" role="dialog" aria-modal="true" aria-label="Merge" hidden></div>
+<div id="claude-panel" role="dialog" aria-modal="true" aria-label="Claude" hidden></div>
 
 <script type="module" src="./js/main.js"></script>
 <script src="./update.js" defer></script>

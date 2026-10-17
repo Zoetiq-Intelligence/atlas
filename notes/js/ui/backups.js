@@ -46,7 +46,7 @@ export async function mount(root, { onRestored } = {}) {
 
   const say = (text, bad) => {
     statusEl.textContent = text;
-    statusEl.style.color = bad ? 'var(--bad, #b3261e)' : '';
+    statusEl.style.color = bad ? 'var(--danger)' : '';
   };
 
   function notInstalled() {
@@ -79,7 +79,7 @@ export async function mount(root, { onRestored } = {}) {
       const row = document.createElement('div');
       row.className = 'bk-row';
       row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;'
-        + 'padding:8px 0;border-top:1px solid var(--rule,rgba(128,128,128,.25))';
+        + 'padding:8px 0;border-top:1px solid var(--rule)';
 
       const label = document.createElement('span');
       label.style.cssText = 'flex:1 1 150px;font-size:13px';
@@ -99,7 +99,15 @@ export async function mount(root, { onRestored } = {}) {
           // transient user activation across an await, so building it inside the copy
           // handler makes writeText silently reject (GUIDE §4.9).
           const str = JSON.stringify(full, null, 1);
-          const tier = await copyText(str, listEl);
+          let pre = row.querySelector('pre');
+          if (!pre) {
+            pre = document.createElement('pre');
+            pre.style.cssText = 'flex:1 1 100%;max-height:30vh;overflow:auto;white-space:pre-wrap;margin:4px 0 0;'
+              + 'font:12px/1.4 var(--mono);user-select:text;-webkit-user-select:text';
+            row.appendChild(pre);
+          }
+          pre.textContent = str;
+          const tier = await copyText(str, pre);
           copy.textContent = tier === 'selected' ? 'Select & copy' : 'Copied';
         } catch (e) {
           copy.textContent = 'Failed';
@@ -120,7 +128,7 @@ export async function mount(root, { onRestored } = {}) {
         if (!armed) {
           armed = true;
           rest.textContent = 'Tap again to replace';
-          rest.style.color = 'var(--bad, #b3261e)';
+          rest.style.color = 'var(--danger)';
           clearTimeout(disarm);
           disarm = setTimeout(() => {
             armed = false; rest.textContent = 'Restore'; rest.style.color = '';

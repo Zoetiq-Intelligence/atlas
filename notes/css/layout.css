@@ -188,7 +188,7 @@
      and the edge strips are display:none. */
   pointer-events: none;
 }
-#gutter:active { background: var(--accent); color: #fff; }
+#gutter:active { background: var(--accent); color: var(--on-accent); }
 #gutter .grip { width: 2px; height: 26px; border-radius: 2px; background: currentColor; box-shadow: 4px 0 0 currentColor; }
 
 /* ---------- desktop ---------- */
@@ -271,13 +271,15 @@
   background: var(--chrome);
   white-space: nowrap;
 }
-#folders button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+#folders button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
 #list { flex: 1; overflow-y: auto; padding: 8px 10px 24px; }
 .sb-ft { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center;
          padding: 10px 14px calc(var(--sa-bottom) + 14px); border-top:1px solid var(--rule); }
 .quiet { font-size:13px; color:var(--ink-3); }
 .quiet:hover { color: var(--ink-2); }
+/* the list's bottom row: phone-sized targets, readable on --paper-2 */
+.sb-ft .quiet { min-height: 44px; padding: 0 4px; color: var(--ink-2); }
 /* A row carries its own destinations. pan-y is what makes the swipe possible without
    a gesture arbiter: the browser keeps vertical scrolling of the list, and hands us
    anything horizontal. Same split as .editor (pan-y) against the edge strips (pan-x). */
@@ -291,7 +293,7 @@
 }
 .nrow:hover { background: var(--chrome); }
 .nrow[aria-current="true"] { background: var(--accent); }
-.nrow[aria-current="true"] .t, .nrow[aria-current="true"] .s { color: #fff; }
+.nrow[aria-current="true"] .t, .nrow[aria-current="true"] .s { color: var(--on-accent); }
 
 .nmain {
   flex: 1 1 auto; min-width: 0;
@@ -312,7 +314,7 @@
   color: var(--ink-3);
 }
 .nsend:hover { background: var(--paper-2); color: var(--ink); }
-.nrow[aria-current="true"] .nsend { color: #fff; }
+.nrow[aria-current="true"] .nsend { color: var(--on-accent); }
 
 /* While a row is being dragged it must paint above its neighbours, or the translate
    slides under the next row instead of over it. */
@@ -414,7 +416,7 @@
   border: 1px solid var(--rule);
 }
 .fbtn:hover { color: var(--ink); }
-.fbtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fbtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .fbtn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .fsep { flex: 0 0 auto; width: 1px; margin: 3px 3px; background: var(--rule); }
 
@@ -443,12 +445,12 @@
   left: 50%; transform: translateX(-50%);
   bottom: calc(var(--bar-h) + var(--kb, 0px) + 10px);
   padding: 7px 14px; border-radius: 999px;
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   font-size: 13px; font-weight: 600;
   box-shadow: 0 2px 12px rgba(0,0,0,.18);
 }
 
-/* Both full-screen panels. Fixed and inset-padded rather than in normal flow: the
+/* The full-screen panels (diag, backups, import, merge, Claude). Fixed and inset-padded rather than in normal flow: the
    sidebar and footer are fixed, so a panel left in flow renders BEHIND them and its
    buttons are unreachable — visible, and not clickable. */
 #diag, #backups-panel, #import-panel, #merge-panel, #claude-panel {
@@ -461,10 +463,11 @@
 #gate h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.02em; }
 #gate p { color: var(--ink-2); font-size: 14px; margin: 0 0 18px; }
 #gate form { display: flex; flex-direction: column; gap: 10px; }
-#gate .go {
-  background: var(--accent); color: #fff; font-weight: 600;
+.go {
+  background: var(--accent); color: var(--on-accent); font-weight: 600;
   padding: 11px; border-radius: var(--r);
 }
+.go:disabled { opacity: .45; cursor: default; }
 #gate .msg { font-size: 13px; margin-top: 12px; min-height: 18px; color: var(--ink-2); }
 #gate .msg.bad { color: var(--danger); }
 
@@ -501,7 +504,7 @@
    appears too, so this is offset clear of it rather than replacing it — it supplements
    (the 2026-09-17 ruling). */
 #selmenu {
-  position: fixed; top: 0; left: 0; z-index: 80;
+  position: fixed; top: 0; left: 0; z-index: 15;
   max-width: min(94vw, 520px);
   border-radius: 10px;
   background: var(--chrome);
@@ -527,7 +530,7 @@
   color: var(--ink-2);
 }
 .selbtn:hover { background: var(--paper-2); color: var(--ink); }
-.selbtn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.selbtn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 .selbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- unfinished ----------
@@ -551,11 +554,13 @@
          background:var(--paper); color:var(--ink); font-size:16px; }
 .cl-chip { font-size:13px; padding:6px 10px; border-radius:999px; border:1px solid var(--rule);
            background:var(--chrome); color:var(--ink); min-height:32px; max-width:100%;
-           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-flex; align-items:center; }
+.cl-ct { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+select.cl-chip { font-size: max(16px, 1rem); }   /* under 16px, iOS zooms the page on focus */
 .cl-row { padding:10px 0; border-top:1px solid var(--rule); }
 .cl-meta { font-size:12px; color:var(--ink-3); margin-bottom:4px; }
 .cl-st { font-weight:600; color:var(--ink-2); }
-.cl-st[data-s="done"] { color:var(--accent); }
+.cl-st[data-s="done"] { color:var(--accent-ink); }
 .cl-q { font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .cl-a { font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:6px; padding:8px 10px;
         border-radius:8px; background:var(--chrome); }

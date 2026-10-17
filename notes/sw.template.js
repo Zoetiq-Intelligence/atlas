@@ -31,7 +31,11 @@ PRECACHED.add(new URL('./', SCOPE).href);
    OLD page running on the NEW cache for however long the idle gate takes, which is
    the mixed-build bug arrived at through the lifecycle instead of the fetch handler. */
 self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }));
+  // cache: 'reload' skips the HTTP cache: Pages serves max-age=600, so two deploys inside
+  // ten minutes could otherwise fill the NEW cache with the PREVIOUS build's files.
+  e.waitUntil(caches.open(CACHE).then(function (c) {
+    return c.addAll(ASSETS.map(function (a) { return new Request(a, { cache: 'reload' }); }));
+  }));
 });
 
 /* The precache is replaced ATOMICALLY. Drop only THIS channel's old caches — never

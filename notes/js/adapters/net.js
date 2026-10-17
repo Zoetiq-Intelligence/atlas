@@ -66,17 +66,23 @@ export async function request(path, opts = {}) {
     if (token) h['Authorization'] = `Bearer ${token}`;
   }
 
+  // A black-holed connection (a laptop waking, a network switch) would otherwise hang
+  // forever and wedge the outbox behind it. Generous, because one note can be 0.5 MB
+  // going up a phone connection. A timeout is not a NetError, so callers retry it.
   const res = await fetch(url, {
     method,
     headers: h,
     body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
-    signal,
+    signal: signal || (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(60000) : undefined),
   });
 
   // One recovery attempt. tokenProvider single-flights the refresh itself, so
   // five concurrent 401s produce one refresh, not five.
+  // A refresh that failed for a TRANSIENT reason (offline, 5xx) throws, and that error
+  // propagates as transient: the session is kept and the caller retries. Only a refresh
+  // the server refused (null) means signed out.
   if (res.status === 401 && auth && retryOn401 && tokenProvider) {
-    const fresh = await tokenProvider({ force: true }).catch(() => null);
+    const fresh = await tokenProvider({ force: true });
     if (fresh) return request(path, { ...opts, retryOn401: false });
     if (onAuthFailure) onAuthFailure();
   }
@@ -94,5 +100,5 @@ export async function request(path, opts = {}) {
 /** True when the failure is worth retrying later rather than surfacing now. */
 export function isTransient(err) {
   if (!(err instanceof NetError)) return true;      // network/DNS/offline
-  return err.status >= 500 || err.status === 429;
+  return err.status >= 500 || err.status === 429 || err.status === 408;
 }

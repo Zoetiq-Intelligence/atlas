@@ -1,7 +1,7 @@
 // sync.js — local-first. The app NEVER blocks on the network.
 //
 // Edit -> memory -> IndexedDB (debounced) -> outbox -> server.
-// Pull on load and on visibility. v0 conflict policy is last-write-wins on the
+// Pull on load, on foreground, on a poll, and when a live broadcast says a row moved. v0 conflict policy is last-write-wins on the
 // whole note by updated_at, which can lose an edit if the same note is changed
 // on two devices while one is offline. Accepted for v0 and recorded in
 // STATE.md; the per-block ids exist to fix it properly in v1.
@@ -23,7 +23,7 @@ let changed = [];
 // updated_at is the discriminator, which is why the upsert's returned row is kept
 // rather than discarded.
 const recent = new Map();
-const RECENT_TTL = 15000;
+const RECENT_TTL = 120000;
 function remember(row) {
   if (!row || !row.id) return;
   recent.set(row.id, row.updated_at);
@@ -46,17 +46,22 @@ export async function localNotes() {
 export const localFolders = () => all(FOLDERS);
 export const localNote = id => get(NOTES, id);
 
+// Strictly increasing, so two saves in the same millisecond still tell apart which
+// outbox entry a flush sent (see flush()).
+let lastAt = 0;
+const stamp = () => (lastAt = Math.max(Date.now(), lastAt + 1));
+
 export async function saveLocal(note) {
   note.updated_at = new Date().toISOString();
   await set(NOTES, note);
-  await set(OUTBOX, { id: note.id, table: 'notes', at: Date.now() });
+  await set(OUTBOX, { id: note.id, table: 'notes', at: stamp() });
   emit('dirty');
   schedule();
 }
 
 export async function saveFolderLocal(folder) {
   await set(FOLDERS, folder);
-  await set(OUTBOX, { id: folder.id, table: 'folders', at: Date.now() });
+  await set(OUTBOX, { id: folder.id, table: 'folders', at: stamp() });
   emit('dirty');
   schedule();
 }
@@ -64,6 +69,14 @@ export async function saveFolderLocal(folder) {
 function schedule(ms = 900) {
   clearTimeout(timer);
   timer = setTimeout(() => { flush(); }, ms);
+}
+
+// Remove an outbox entry only if it is still the one that was sent. A save made while
+// the upsert was in flight re-queues the same id with a newer `at`; deleting by id alone
+// would drop that newer edit, and it would never reach the server.
+async function settle(item) {
+  const cur = await get(OUTBOX, item.id);
+  if (cur && cur.at === item.at) await del(OUTBOX, item.id);
 }
 
 export async function flush() {
@@ -85,10 +98,13 @@ export async function flush() {
           if (!f) { await del(OUTBOX, item.id); continue; }
           remember(await api.upsertFolder({ id: f.id, name: f.name, sort: f.sort || 0 }));
         }
-        await del(OUTBOX, item.id);
+        await settle(item);
       } catch (e) {
-        if (isTransient(e)) { emit('off'); schedule(8000); return; }
-        await del(OUTBOX, item.id);          // permanent rejection: drop, don't loop
+        // A 401 is a session problem, not a verdict on the edit: keep it for after the
+        // next sign-in instead of deleting every queued edit.
+        if (isTransient(e) || e.status === 401) { emit('off'); schedule(8000); return; }
+        console.warn('[outbox] rejected, dropped', item.table, item.id, e.status);
+        await settle(item);                  // permanent rejection: drop, don't loop
       }
     }
     emit('ok');
@@ -116,21 +132,34 @@ const OVERLAP_MS = 30000;
 // WebKit is the engine this has to work in. Truncate before parsing.
 const ms = iso => Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
 
-export async function pull() {
+// One pull at a time: the poll, a foreground, a broadcast and a live (re)join can all
+// ask at once, and they all want the same answer.
+let pulling = null;
+export function pull() {
+  return pulling || (pulling = doPull().finally(() => { pulling = null; }));
+}
+
+async function doPull() {
   try {
     const since = cursor ? new Date(ms(cursor) - OVERLAP_MS).toISOString() : undefined;
     const [notes, folders] = await Promise.all([api.fetchNotes(since), api.fetchFolders()]);
-    for (const f of folders) await set(FOLDERS, f);
+    // An edit still waiting in the outbox always survives a pull, whatever the clocks say.
+    const pending = new Set((await all(OUTBOX)).map(o => o.id));
+    for (const f of folders) if (!pending.has(f.id)) await set(FOLDERS, f);
     // WHICH ids actually moved. Writing to IndexedDB is not the end of a pull: nothing
     // on screen re-reads the store on its own, so before this the poll was fetching
     // rows into a database nobody looked at again until the next boot. A pull has to
     // say what it changed or it may as well not have run.
     const touched = [];
     for (const n of notes) {
+      if (pending.has(n.id)) continue;
       const mine = await get(NOTES, n.id);
       // last-write-wins by updated_at; an unflushed local edit survives the pull
       if (mine && mine.updated_at > n.updated_at) continue;
-      if (!mine || mine.updated_at !== n.updated_at) touched.push(n.id);
+      // Our own save coming back carries the SERVER's updated_at, never equal to the local
+      // one, so without the echo check every save reloaded the open editor on the next
+      // pull: caret to the top, undo gone.
+      if ((!mine || mine.updated_at !== n.updated_at) && recent.get(n.id) !== n.updated_at) touched.push(n.id);
       await set(NOTES, n);
     }
     for (const n of notes) {

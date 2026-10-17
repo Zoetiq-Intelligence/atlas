@@ -14,6 +14,7 @@
 // the two supplement rather than collide — the 09-17 ruling.
 
 import { COMMANDS, GROUPS, keyHint, run, isOn } from '../editor/commands.js';
+import { attach as tip } from './tooltip.js';
 
 const CALLOUT_GAP = 44;   // room for the iOS system callout, which we do not replace
 
@@ -35,7 +36,7 @@ export function createSelectionMenu(root, getEditor, host = {}) {
       b.innerHTML = c.html;
       b.dataset.id = c.id;
       b.setAttribute('aria-label', `${c.label} (${keyHint(c)})`);
-      b.title = `${c.label} · ${keyHint(c)}`;
+      tip(b, `${c.label} · ${keyHint(c)}`);   // instant, like the footer's
       bar.appendChild(b);
       buttons.push(b);
     }
@@ -96,7 +97,7 @@ export function createSelectionMenu(root, getEditor, host = {}) {
     // a formatting menu.
     const n = sel.anchorNode;
     const el = n && (n.nodeType === 1 ? n : n.parentElement);
-    if (!el || !el.closest('.txt')) return hide();
+    if (!el || !el.closest('.txt') || el.closest('.row.opaque')) return hide();
     place();
   }
 
