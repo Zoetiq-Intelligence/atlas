@@ -1,5 +1,10 @@
 # Resume here
 
+> **Historical (2026-09-18).** Every step below has been done: `SETUP-NOTES.sql` is installed (the separate backup
+> SQL is not, see `QUEUE.md` item 0), the repo is pushed, both devices
+> are installed and signing in. Current state and next steps: `workflow/ATLAS-MASTER-BRIEF.md`, `workflow/QUEUE.md`
+> and `workflow/PHONE-LOOP.md`. Kept for the record of what v1.5 changed and why.
+
 Everything is built and tested. Three things stand between it and your devices, and
 two of them take about four minutes.
 

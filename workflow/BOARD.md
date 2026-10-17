@@ -5,6 +5,8 @@
 
 > Permanent record. Chat is transitory; this file is the state.
 > Last updated: 2026-09-23 · Master: successor cloud session (has GitHub write access)
+> **2026-10-17: Atlas Master owns this repo.** For the Notes app and Atlas, the current state is
+> `ATLAS-MASTER-BRIEF.md`, `QUEUE.md` and `PHONE-LOOP.md`; this board is kept as the earlier record.
 > Coordination topology: see `_protocol/COORDINATION.md` — it supersedes the capability findings in `HANDOFF-MASTER.md`.
 
 ---

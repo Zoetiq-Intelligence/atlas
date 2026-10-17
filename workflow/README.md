@@ -1,6 +1,11 @@
-# workflowpipelines
+# atlas · workflow
 
-Coordination repo for a set of parallel projects run by separate Claude threads.
+Coordination for Atlas (Zoetiq-Intelligence/atlas). The folder came from the earlier `workflowpipelines` repo,
+which coordinated parallel projects run by separate Claude threads.
+
+> **Atlas Master (since 2026-10-17) starts at `ATLAS-MASTER-BRIEF.md`**, then `HANDOFF.md`, `MERGE-PLAN.md`,
+> `imports/atlas-notes-handoff.md`, `PHONE-LOOP.md` and `QUEUE.md`. Everything below is the earlier setup and still
+> holds where nothing newer contradicts it.
 
 ## How this works
 

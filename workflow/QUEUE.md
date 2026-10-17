@@ -1,6 +1,6 @@
 # Open queue — everything asked for and not yet delivered
 
-> Master owns this file. Updated 2026-09-17.
+> Master owns this file. Updated 2026-10-17 (Atlas Master).
 > Ruling 2026-09-17: **keep iterating, no design-doc rebuild, until critical mass.**
 > Ruling 2026-09-18: **master works directly on `main`; every push deploys.** The
 > successor session can push (handoff §3.1 resolved), so a feature branch only adds a
@@ -15,6 +15,7 @@
 | 1b | **One SPA header** | **built 2026-09-18** | Replaced both per-pane headers. Title segments are sized to the divider's fraction so each sits above its pane, and double as the pane switcher; list / sync / new note are global and live there once. |
 | 1c | **Same note in both panes mirrors** | **fixed 2026-09-18** | Was a data-loss bug, not a display one: only the title mirrored, so the second pane's next save wrote its stale doc back over the edit. No network involved. |
 | 1d | **A visible app now pulls** | **fixed 2026-09-18** | `pull()` ran only on foreground/`online`, and the 20s interval flushed writes without ever reading. Two devices both open never saw each other. Now polls at 5s AND reports which ids changed, because writing to IndexedDB is not the same as reaching the screen — nothing re-read the store. This is the floor under live sync, not a substitute for it. |
+| 1e | **Phone loop: Paste, Merge, Claude** | **built 2026-10-17** | Import by pasting, merge two notes on the device with the coverage proof, send a request to Atlas Master and read the reply. `workflow/PHONE-LOOP.md`. |
 | 2 | **Search** — "within note that's open, and then global" | not started | Only the sidebar filters today, client-side. |
 | 3 | **Drag-and-drop line reordering** — "in a way that is fast on phone" | not started | |
 | 4 | **Footer restructure** | **built 2026-09-19** | "every single thing that we can do should be in the footer somehow, minimize the number of layers and always indicate on a button how many things are within it in a subtle way somehow". Plus new styles, plus deciding what is static and what scrolls. |
@@ -128,8 +129,14 @@ Asked 2026-09-18: *"can we put in a V1 of being able to insert drawings? I want 
 different takes that I can A/B/C test inline (without breakign the rest of the app/notes
 data!) and then we will iterate."*
 
-**⚠ BLOCKER, found before any code: the document model currently destroys what it does
-not recognise.** `doc.js coerce()` does two things that make a drawing block unsafe today:
+**✅ Blocker cleared 2026-10-17 (commit 7b1e64a, live in build notes-2f47fc0c2982).**
+`coerce()` now keeps a block of a type it does not know whole, every field as stored. It
+shows as a read-only row and is never merged into or retyped (`schema.js isOpaque`). Every
+device must run that build or newer before the first drawing block is created. The
+history follows.
+
+**⚠ BLOCKER (as found 2026-09-18), before any code: the document model currently destroys
+what it does not recognise.** `doc.js coerce()` does two things that make a drawing block unsafe today:
 
 1. `.filter(b => b && typeof b.text === 'string')` — a block with no `text` is **dropped**.
 2. It rebuilds each block from a fixed field list, so **any field it does not know about

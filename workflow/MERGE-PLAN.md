@@ -6,8 +6,8 @@
 > | Source | Read from | Complete? |
 > |---|---|---|
 > | **Atlas Core** (Workbench) | `Zoetiq-Intelligence/workflowpipelines` `projects/workbench/` at `eb7c3eb`, and `HANDOFF.md` | ✅ complete |
-> | **Atlas Notes** | this repo: `notes/` at `896656e`, `workflow/QUEUE.md`, `workflow/projects/notes-app/*` | ⚠ from the repo only — **`imports/atlas-notes-handoff.md` and `atlas-notes-messages.jsonl` had not landed when this was written.** Reconcile against them. |
-> | **Nexa Notes** (ideas only) | `imports/nexa-notes-ideas.md` + `nexa-notes-messages.jsonl` | ❌ **not received** — Gianni is pasting the inventory. §C is empty until then. |
+> | **Atlas Notes** | this repo: `notes/` at `896656e`, `workflow/QUEUE.md`, `workflow/projects/notes-app/*` | ⚠ drafted from the repo only. **`imports/atlas-notes-handoff.md` and `atlas-notes-messages.jsonl` landed on 2026-10-17;** reconcile §B against them. |
+> | **Nexa Notes** (ideas only) | `imports/nexa-notes-ideas.md` + `nexa-notes-messages.jsonl` | ✅ **received 2026-10-17**: 64 ideas, `NN-01` to `NN-64`. Judging them in §C is still open. |
 >
 > Rules from the brief: **Atlas Notes wins every conflict** unless Gianni says otherwise. Nexa Notes contributes UI
 > ideas only, one by one, no code merged blindly. **Nothing in Atlas is called Nexa.**
@@ -70,7 +70,7 @@ so the ruling is informed.
 | **Quarry** | **keep (PC)** / **adapt (iOS)** | Electron webviews, automation | open the search in Safari / `SFSafariViewController`; history + tree + pins kept | iOS cannot host fenced webviews that script DeepSeek. The tree and history are the portable part. |
 | **Slate** v1 | **keep** | as is | iPad later | The Huion is the PC's pen. Note `workflow/projects/whiteboard/FINDINGS.md`: Canvas 2D will not scale past a few thousand strokes; a GPU renderer is the v2 path. |
 | **Slate drafts** (Paper, Map, Notebook, Flipbook) | **keep as A/B options** pending Gianni's pick | | | Hooks over one core, so any can merge. |
-| Slate's stroke engine → **Notes' drawing block** | **adapt** (proposal) | | | Notes' `QUEUE.md` item 9 asks for drawings with three takes A/B/C. Slate's pressure-stroke model, outline, SVG export and stabiliser are a ready "take". The forward-compat blocker in `coerce()` still lands first. |
+| Slate's stroke engine → **Notes' drawing block** | **adapt** (proposal) | | | Notes' `QUEUE.md` item 9 asks for drawings with three takes A/B/C. Slate's pressure-stroke model, outline, SVG export and stabiliser are a ready "take". The forward-compat blocker in `coerce()` is cleared (2026-10-17, `7b1e64a`). |
 | **Drafting board** (dashed idea panes + status/notes footer) | **adapt** → an **Ideas** Module | | | Keep "one pane per idea"; statuses could feed Horizon's tasks instead of browser storage. |
 | **Scratch** (capture an idea into a pane) | **keep** inside Ideas | | | |
 | Draft **Cue** (Spotify + YouTube queue) | **keep as idea** | | | Blocked on: Spotify Premium? |
@@ -105,7 +105,7 @@ so the ruling is informed.
 
 | Feature | Verdict | Reason |
 |---|---|---|
-| Block document model (`jsonb` block array, `coerce()`) | **keep** | Core of the product. ⚠ `coerce()` drops unknown blocks/fields — fix forward-compat before any new block type (drawings, tables). |
+| Block document model (`jsonb` block array, `coerce()`) | **keep** | Core of the product. ✅ `coerce()` now keeps unknown block types whole and read-only (2026-10-17, `7b1e64a`), so new block types (drawings, tables) are unblocked. |
 | Per-block contenteditable editor, hybrid input (native typing, intercepted structure) | **keep** | Protects iOS autocorrect, dictation, IME — matters even more in the native shell. |
 | Dual panes, gutter, edge-swipe, one SPA header | **keep** | |
 | Always-floating footer, flat, every control exposed | **keep** | |
@@ -127,10 +127,10 @@ so the ruling is informed.
 
 ---
 
-## C. Nexa Notes (UI ideas only) — **not received**
+## C. Nexa Notes (UI ideas only): **received, not yet judged**
 
-`imports/nexa-notes-ideas.md` and `imports/nexa-notes-messages.jsonl` did not exist when this was drafted. When they
-land, list every idea here, one row each, with keep / adapt / drop and the A/B plan (brief step 5: each adopted idea
+`imports/nexa-notes-ideas.md` (64 ideas, `NN-01` to `NN-64`) and `imports/nexa-notes-messages.jsonl` landed on
+2026-10-17. Next: list every idea here, one row each, with keep / adapt / drop and the A/B plan (brief step 5: each adopted idea
 must be A/B-able).
 
 ---
@@ -154,4 +154,4 @@ must be A/B-able).
    the public repo)**.
 2. Which Slate draft(s) to keep — and is Slate's engine the take for Notes' drawing block?
 3. Gateway and Gyrodex: embed, or launch?
-4. The Nexa Notes inventory (paste it) and Atlas Notes' handoff (its thread pushes it).
+4. ~~The Nexa Notes inventory and Atlas Notes' handoff~~: both landed on 2026-10-17.

@@ -1,7 +1,8 @@
 # Notes app — STATE
 
 > Owned by this project's thread. Per `_protocol/COORDINATION.md`, master (`claude-a2`) **is** this project's thread for v0 — it builds directly rather than commissioning a child session. Promote to a separate session if it outgrows master's context.
-> Last updated: 2026-09-18
+> Last updated: 2026-09-18 · **Newer: 2026-10-17** (Atlas Master): build notes-2f47fc0c2982 adds Paste, Merge, the
+> Claude panel and forward-compatible blocks. Current state: `workflow/QUEUE.md`, `workflow/PHONE-LOOP.md`.
 
 ## One-line status
 
